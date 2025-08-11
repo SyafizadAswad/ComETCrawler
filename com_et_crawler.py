@@ -196,7 +196,7 @@ class ComEtCrawler:
                         minimal_options = Options()
                         minimal_options.add_argument("--headless")
                         minimal_options.add_argument("--no-sandbox")
-                        minimal_options.add_argument("--disable-dev-shm-usage")
+                        minimal_options.add_argument("--disable-dev-shm_usage")
                         minimal_options.add_argument("--disable-gpu")
                         minimal_options.add_argument("--disable-extensions")
                         minimal_options.add_argument("--disable-plugins")
@@ -212,7 +212,7 @@ class ComEtCrawler:
                             self.update_status("Trying without headless mode...")
                             visible_options = Options()
                             visible_options.add_argument("--no-sandbox")
-                            visible_options.add_argument("--disable-dev-shm-usage")
+                            visible_options.add_argument("--disable-dev-shm_usage")
                             visible_options.add_argument("--disable-gpu")
                             visible_options.add_argument("--disable-extensions")
                             visible_options.add_argument("--disable-plugins")
@@ -365,7 +365,7 @@ class ComEtCrawler:
                     except:
                         # Last resort: try to find and click a search button
                         try:
-                            search_button = driver.find_element(By.CSS_SELECTOR, "button[type='submit'], input[type='submit'], .search-button, .btn-search")
+                            search_button = driver.find_element(By.CSS_SELECTOR, "button[type='submit'], input[type='submit'], .search-button, .btn-button")
                             search_button.click()
                         except:
                             raise Exception(f"Could not interact with search field: {str(e)}")
@@ -377,7 +377,7 @@ class ComEtCrawler:
                 # Wait for search results to be visible
                 try:
                     WebDriverWait(driver, 15).until(
-                        EC.presence_of_element_located((By.CSS_SELECTOR, "body"))
+                        EC.presence_of_element_located((By.TAG_NAME, "body"))
                     )
                 except:
                     pass
@@ -495,6 +495,9 @@ class ComEtCrawler:
                 
                 # Process each product container
                 products_data = []
+                # Use a set to keep track of processed product IDs to avoid duplicates
+                seen_product_ids = set() 
+
                 for i, container in enumerate(product_containers):
                     try:
                         self.update_status(f"Extracting info from container {i+1}/{len(product_containers)}")
@@ -502,9 +505,12 @@ class ComEtCrawler:
                         # Extract product information from container
                         product_info = self.extract_product_info(container, driver)
                         
-                        if product_info:
+                        if product_info and product_info['product_id'] not in seen_product_ids:
                             products_data.append(product_info)
+                            seen_product_ids.add(product_info['product_id'])
                             self.update_results(f"Found product: {product_info['product_id']} - {product_info['product_name']}\n")
+                        elif product_info and product_info['product_id'] in seen_product_ids:
+                            self.update_results(f"Skipping duplicate product: {product_info['product_id']}\n")
                         
                     except Exception as e:
                         self.update_results(f"Error extracting from container {i+1}: {str(e)}\n")
@@ -512,10 +518,14 @@ class ComEtCrawler:
                 if not products_data:
                     self.update_results("No products found in containers. Trying fallback method...\n")
                     # Fallback: try to find any 商品図 links on the page
-                    products_data = self.fallback_product_detection(driver)
-                
-                self.update_status(f"Found {len(products_data)} products. Starting downloads...")
-                self.update_results(f"Found {len(products_data)} products to process.\n\n")
+                    fallback_products = self.fallback_product_detection(driver)
+                    for product in fallback_products:
+                        if product['product_id'] not in seen_product_ids:
+                            products_data.append(product)
+                            seen_product_ids.add(product['product_id'])
+
+                self.update_status(f"Found {len(products_data)} unique products. Starting downloads...")
+                self.update_results(f"Found {len(products_data)} unique products to process.\n\n")
                 
                 if not products_data:
                     self.update_results("No products found. The search might not have returned any results.\n")
@@ -548,7 +558,10 @@ class ComEtCrawler:
             self.search_button.config(state='normal')
     
     def extract_product_info(self, container, driver):
-        """Extract product information from a container element"""
+        """
+        Extract product information from a container element,
+        prioritizing diagram links that precisely match the product_id.
+        """
         try:
             # Get container text
             container_text = container.text
@@ -571,46 +584,61 @@ class ComEtCrawler:
             if not product_id:
                 return None
             
-            # Find links within this container
             diagram_link = None
             specs_link = None
-            product_image = None
-            product_images = []
+            product_images = [] 
             diagram_href = None
             specs_href = None
             
-            try:
-                # Look for various links within this container
-                links = container.find_elements(By.TAG_NAME, "a")
-                for link in links:
-                    link_text = link.text.strip()
-                    href = link.get_attribute('href')
+            all_links_in_container = container.find_elements(By.TAG_NAME, "a")
+            
+            # --- Diagram Link Selection Logic ---
+            # Priority 1: Find a diagram link that explicitly contains the product_id as a distinct part in its href
+            found_exact_diagram = False
+            for link in all_links_in_container:
+                href = link.get_attribute('href')
+                link_text = link.text.strip()
+                if '商品図' in link_text and href:
+                    parsed_path = urlparse(href).path
+                    filename = os.path.basename(parsed_path)
                     
-                    # Find 商品図 link
+                    # Use regex word boundaries to match the exact product_id in the filename/path
+                    # This prevents matching "CS902B" within "CS902BVN"
+                    if re.search(r'\b' + re.escape(product_id) + r'\b', filename, re.IGNORECASE):
+                        diagram_link = link
+                        diagram_href = href
+                        found_exact_diagram = True
+                        break # Found the most relevant one, break early
+            
+            # Priority 2: If no exact match, fall back to general 商品図 link within the container
+            if not found_exact_diagram:
+                for link in all_links_in_container:
+                    href = link.get_attribute('href')
+                    link_text = link.text.strip()
                     if '商品図' in link_text:
                         diagram_link = link
                         diagram_href = href
-                    # Find 仕様一覧 link
-                    elif '仕様一覧' in link_text:
-                        specs_link = link
-                        specs_href = href
-                    # Find diagram links by href
+                        break # Take the first general 商品図 link found
                     elif href and ('diagram' in href.lower() or 'drawing' in href.lower()):
-                        if not diagram_link:
+                        if not diagram_link: # Only assign if nothing better found yet
                             diagram_link = link
                             diagram_href = href
-                
-                # Find product images with the specific prefix as requested
-                images = container.find_elements(By.CSS_SELECTOR, "img[src^='https://search.toto.jp/img/']")
-                for img in images:
-                    product_images.append(img)
 
-                if product_images:
-                    product_image = product_images[0]
-                
-                        
-            except:
-                pass
+            # --- Specifications Link Selection Logic ---
+            for link in all_links_in_container:
+                href = link.get_attribute('href')
+                link_text = link.text.strip()
+                if '仕様一覧' in link_text:
+                    specs_link = link
+                    specs_href = href
+                    break # Found the specs link, break
+
+            # --- Product Images Selection Logic ---
+            # Find product images with the specific prefix. 
+            # If images for other 品番 exist, but have different prefixes, this selector might miss them.
+            images = container.find_elements(By.CSS_SELECTOR, "img[src^='https://search.toto.jp/img/']")
+            for img in images:
+                product_images.append(img)
             
             return {
                 'product_id': product_id,
@@ -620,8 +648,7 @@ class ComEtCrawler:
                 'diagram_href': diagram_href,
                 'specs_link': specs_link,
                 'specs_href': specs_href,
-                'product_image': product_image,
-                'product_images': product_images,
+                'product_images': product_images, # List of images to download
                 'container_text': container_text
             }
             
@@ -675,17 +702,25 @@ class ComEtCrawler:
             diagram_dir = os.path.join(product_dir, config.DIAGRAM_FOLDER_NAME)
             os.makedirs(diagram_dir, exist_ok=True)
             
-            # 1. Download Product Image
+            # 1. Download Product Images (maximum 2 per product ID)
             if product.get('product_images'):
-                try:
-                    self.update_results(f"Image: Attempting to download for {product['product_id']}...\n")
-                    for img_el in product['product_images']:
+                self.update_results(f"Image: Attempting to download {min(2, len(product['product_images']))} images for {product['product_id']}...\n")
+                downloaded_image_count = 0
+                for img_el in product['product_images']:
+                    if downloaded_image_count >= 2:
+                        self.update_results("  Reached maximum of 2 product images, skipping further images.\n")
+                        break
+                    
+                    try:
                         if self.download_product_image(driver, img_el, diagram_dir):
                             downloaded_something = True
-                except Exception as e:
-                    self.update_results(f"  Error during product image download: {str(e)}\n")
-            
-            # 2. Process 商品図 (Product Diagram)
+                            downloaded_image_count += 1
+                    except Exception as e:
+                        self.update_results(f"  Error during product image download for one image: {str(e)}\n")
+            else:
+                self.update_results(f"  No product images found for {product['product_id']} with the current selector.\n")
+
+            # 2. Process 商品図 (Product Diagram) - NO CHANGES TO THIS FUNCTIONALITY
             if product.get('diagram_link') or product.get('diagram_href'):
                 try:
                     self.update_results(f"Diagram (商品図): Attempting to download for {product['product_id']}...\n")
@@ -693,6 +728,8 @@ class ComEtCrawler:
                         downloaded_something = True
                 except Exception as e:
                     self.update_results(f"  Error downloading diagram: {str(e)}\n")
+            else:
+                self.update_results(f"  No 商品図 link found for {product['product_id']}.\n")
             
             # 3. Process 仕様一覧 (Specifications)
             if product.get('specs_link') or product.get('specs_href'):
@@ -707,6 +744,8 @@ class ComEtCrawler:
                         downloaded_something = True
                 except Exception as e:
                     self.update_results(f"  Error processing specifications: {str(e)}\n")
+            else:
+                self.update_results(f"  No 仕様一覧 link found for {product['product_id']}.\n")
             
             return downloaded_something
                 
@@ -811,7 +850,7 @@ class ComEtCrawler:
                 if '.pdf' in current_url.lower():
                     ext = '.pdf'
                 elif any(img_ext in current_url.lower() for img_ext in ['.jpg', '.jpeg']):
-                    ext = '.jpg'
+                    ext = 'jpg'
                 elif '.png' in current_url.lower():
                     ext = '.png'
                 elif '.gif' in current_url.lower():
@@ -1166,7 +1205,7 @@ class ComEtCrawler:
                 for chunk in response.iter_content(chunk_size=config.CHUNK_SIZE):
                     f.write(chunk)
             
-            if os.path.exists(filepath) and os.path.getsize() > 0:
+            if os.path.exists(filepath) and os.path.getsize(filepath) > 0:
                 self.update_results(f"    Successfully downloaded: {filename} ({os.path.getsize(filepath)} bytes)\n")
                 return filename
             else:
@@ -1243,7 +1282,7 @@ class ComEtCrawler:
                         
                     try:
                         width = driver.execute_script("return arguments[0].naturalWidth;", img)
-                        height = driver.execute_script("return arguments[0].naturalHeight;", img)
+                        height = driver.execute_script("return arguments[0].naturalHeight; ", img)
                         area = width * height
                         
                         if area > max_area:
