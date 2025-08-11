@@ -160,8 +160,8 @@ class ComEtCrawler:
                     chrome_options.add_argument("--metrics-recording-only")
                 elif option == "no_first_run" and value:
                     chrome_options.add_argument("--no-first-run")
-                elif option == "safebrowsing_disable_auto_update" and value:
-                    chrome_options.add_argument("--safebrowsing-disable-auto-update")
+                elif option == "safeBrowse_disable_auto_update" and value:
+                    chrome_options.add_argument("--safeBrowse-disable-auto-update")
                 elif option == "disable_software_rasterizer" and value:
                     chrome_options.add_argument("--disable-software-rasterizer")
             
@@ -497,7 +497,7 @@ class ComEtCrawler:
                 products_data = []
                 for i, container in enumerate(product_containers):
                     try:
-                        self.update_status(f"Processing product container {i+1}/{len(product_containers)}")
+                        self.update_status(f"Extracting info from container {i+1}/{len(product_containers)}")
                         
                         # Extract product information from container
                         product_info = self.extract_product_info(container, driver)
@@ -507,15 +507,15 @@ class ComEtCrawler:
                             self.update_results(f"Found product: {product_info['product_id']} - {product_info['product_name']}\n")
                         
                     except Exception as e:
-                        self.update_results(f"Error processing container {i+1}: {str(e)}\n")
+                        self.update_results(f"Error extracting from container {i+1}: {str(e)}\n")
                 
                 if not products_data:
                     self.update_results("No products found in containers. Trying fallback method...\n")
                     # Fallback: try to find any 商品図 links on the page
                     products_data = self.fallback_product_detection(driver)
                 
-                self.update_status(f"Found {len(products_data)} products")
-                self.update_results(f"Found {len(products_data)} products\n\n")
+                self.update_status(f"Found {len(products_data)} products. Starting downloads...")
+                self.update_results(f"Found {len(products_data)} products to process.\n\n")
                 
                 if not products_data:
                     self.update_results("No products found. The search might not have returned any results.\n")
@@ -534,8 +534,8 @@ class ComEtCrawler:
                         self.update_results(f"Error processing {product['product_id']}: {str(e)}\n")
                 
                 self.progress_var.set(100)
-                self.update_status(f"Search completed. Downloaded {downloaded_count} diagrams.")
-                self.update_results(f"\nSearch completed. Downloaded {downloaded_count} diagrams.\n")
+                self.update_status(f"Search completed. Downloaded items for {downloaded_count} products.")
+                self.update_results(f"\nSearch completed. Downloaded items for {downloaded_count} products.\n")
                 
             finally:
                 driver.quit()
@@ -571,24 +571,44 @@ class ComEtCrawler:
             if not product_id:
                 return None
             
-            # Find 商品図 link within this container
+            # Find links within this container
             diagram_link = None
+            specs_link = None
+            product_image = None
+            product_images = []
+            diagram_href = None
+            specs_href = None
+            
             try:
-                # Look for 商品図 link within this container
+                # Look for various links within this container
                 links = container.find_elements(By.TAG_NAME, "a")
                 for link in links:
                     link_text = link.text.strip()
+                    href = link.get_attribute('href')
+                    
+                    # Find 商品図 link
                     if '商品図' in link_text:
                         diagram_link = link
-                        break
-                
-                # If not found, try to find by href
-                if not diagram_link:
-                    for link in links:
-                        href = link.get_attribute('href')
-                        if href and ('diagram' in href.lower() or 'drawing' in href.lower()):
+                        diagram_href = href
+                    # Find 仕様一覧 link
+                    elif '仕様一覧' in link_text:
+                        specs_link = link
+                        specs_href = href
+                    # Find diagram links by href
+                    elif href and ('diagram' in href.lower() or 'drawing' in href.lower()):
+                        if not diagram_link:
                             diagram_link = link
-                            break
+                            diagram_href = href
+                
+                # Find product images with the specific prefix as requested
+                images = container.find_elements(By.CSS_SELECTOR, "img[src^='https://search.toto.jp/img/']")
+                for img in images:
+                    product_images.append(img)
+
+                if product_images:
+                    product_image = product_images[0]
+                
+                        
             except:
                 pass
             
@@ -597,6 +617,11 @@ class ComEtCrawler:
                 'product_name': product_name,
                 'container': container,
                 'diagram_link': diagram_link,
+                'diagram_href': diagram_href,
+                'specs_link': specs_link,
+                'specs_href': specs_href,
+                'product_image': product_image,
+                'product_images': product_images,
                 'container_text': container_text
             }
             
@@ -640,284 +665,350 @@ class ComEtCrawler:
         return products_data
 
     def process_product_diagrams(self, driver, product):
-        """Process diagrams for a specific product"""
+        """Process diagrams and specifications for a specific product in sequence."""
+        self.update_results(f"\n--- Processing Product: {product['product_id']} ---\n")
+        downloaded_something = False
+        
         try:
-            self.update_results(f"Processing diagrams for {product['product_id']}\n")
-            
             # Create directory for this product
             product_dir = os.path.join(self.output_dir, product['product_id'])
             diagram_dir = os.path.join(product_dir, config.DIAGRAM_FOLDER_NAME)
-            
             os.makedirs(diagram_dir, exist_ok=True)
             
-            # Try to click the 商品図 link
-            if product.get('diagram_link'):
+            # 1. Download Product Image
+            if product.get('product_images'):
                 try:
-                    self.update_results(f"  Clicking 商品図 link for {product['product_id']}\n")
-                    
-                    # Get the href before clicking
-                    href = product['diagram_link'].get_attribute('href')
-                    if href:
-                        self.update_results(f"  Link href: {href}\n")
-                    
-                    # Scroll to the link
-                    driver.execute_script("arguments[0].scrollIntoView(true);", product['diagram_link'])
-                    time.sleep(1)
-                    
-                    # Try different click methods
-                    clicked = False
-                    
-                    # Method 1: Regular click
-                    try:
-                        product['diagram_link'].click()
-                        clicked = True
-                        self.update_results(f"  Regular click successful\n")
-                    except Exception as e:
-                        self.update_results(f"  Regular click failed: {str(e)}\n")
-                    
-                    # Method 2: JavaScript click if regular click failed
-                    if not clicked:
-                        try:
-                            driver.execute_script("arguments[0].click();", product['diagram_link'])
-                            clicked = True
-                            self.update_results(f"  JavaScript click successful\n")
-                        except Exception as e:
-                            self.update_results(f"  JavaScript click failed: {str(e)}\n")
-                    
-                    # Method 3: Direct download if it's a direct link
-                    if href and any(ext in href.lower() for ext in ['.pdf', '.jpg', '.jpeg', '.png', '.gif']):
-                        self.update_results(f"  Direct download link detected\n")
-                        filename = self.download_file(href, diagram_dir)
-                        if filename:
-                            self.update_results(f"  Direct download successful: {filename}\n")
-                            return True
-                    
-                    if clicked:
-                        time.sleep(3)
-                        
-                        # Handle potential new tab/window
-                        current_window = driver.current_window_handle
-                        if len(driver.window_handles) > 1:
-                            # Switch to new tab
-                            new_window = [handle for handle in driver.window_handles if handle != current_window][0]
-                            driver.switch_to.window(new_window)
-                            
-                            self.update_results(f"  New tab opened, downloading from new tab\n")
-                            # Download from new tab
-                            downloaded = self.download_from_current_page(driver, diagram_dir, product['product_id'])
-                            
-                            # Close new tab and switch back
-                            driver.close()
-                            driver.switch_to.window(current_window)
-                            
-                            return downloaded
-                        else:
-                            # Download from same page
-                            self.update_results(f"  No new tab, downloading from current page\n")
-                            return self.download_from_current_page(driver, diagram_dir, product['product_id'])
-                    else:
-                        self.update_results(f"  All click methods failed\n")
-                        return False
-                        
+                    self.update_results(f"Image: Attempting to download for {product['product_id']}...\n")
+                    for img_el in product['product_images']:
+                        if self.download_product_image(driver, img_el, diagram_dir):
+                            downloaded_something = True
                 except Exception as e:
-                    self.update_results(f"  Error clicking diagram link: {str(e)}\n")
-                    return False
-            else:
-                self.update_results(f"  No diagram link found for {product['product_id']}\n")
-                return False
+                    self.update_results(f"  Error during product image download: {str(e)}\n")
+            
+            # 2. Process 商品図 (Product Diagram)
+            if product.get('diagram_link') or product.get('diagram_href'):
+                try:
+                    self.update_results(f"Diagram (商品図): Attempting to download for {product['product_id']}...\n")
+                    if self.handle_diagram_download(driver, product, diagram_dir):
+                        downloaded_something = True
+                except Exception as e:
+                    self.update_results(f"  Error downloading diagram: {str(e)}\n")
+            
+            # 3. Process 仕様一覧 (Specifications)
+            if product.get('specs_link') or product.get('specs_href'):
+                try:
+                    self.update_results(f"Specifications (仕様一覧): Attempting to process for {product['product_id']}...\n")
+                    specs_html = self.extract_specifications(driver, product.get('specs_link'), product.get('specs_href'), product['product_id'])
+                    if specs_html:
+                        specs_file = os.path.join(product_dir, f"{product['product_id']}_specifications.html")
+                        with open(specs_file, 'w', encoding='utf-8') as f:
+                            f.write(specs_html)
+                        self.update_results(f"  Specifications saved: {specs_file}\n")
+                        downloaded_something = True
+                except Exception as e:
+                    self.update_results(f"  Error processing specifications: {str(e)}\n")
+            
+            return downloaded_something
                 
         except Exception as e:
-            self.update_results(f"  Error processing product diagrams: {str(e)}\n")
+            self.update_results(f"  Error processing product: {str(e)}\n")
             return False
 
-    def download_from_current_page(self, driver, diagram_dir, product_id):
-        """Download diagrams from the current page"""
+    def handle_diagram_download(self, driver, product, diagram_dir):
+        """Refactored logic to handle clicking and downloading a diagram."""
+        downloaded = False
+        link_element = product.get('diagram_link')
+        href = product.get('diagram_href')
+        if not href and link_element:
+            href = link_element.get_attribute('href')
+        
+        if href:
+            self.update_results(f"  Link href: {href}\n")
+
+        # First, try direct download if the href is a PDF link
+        if href and href.lower().endswith('.pdf'):
+            self.update_results("  Direct PDF link found, attempting direct download.\n")
+            if self.download_file(href, diagram_dir):
+                return True
+
+        # If it's not a direct link or direct download fails, try clicking
+        if link_element:
+            try:
+                driver.execute_script("arguments[0].scrollIntoView(true);", link_element)
+                time.sleep(1)
+                
+                current_window = driver.current_window_handle
+                link_element.click()
+                time.sleep(3) # Wait for action to complete
+
+                # Check if a new tab was opened
+                if len(driver.window_handles) > 1:
+                    new_window = [h for h in driver.window_handles if h != current_window][0]
+                    driver.switch_to.window(new_window)
+                    self.update_results("  New tab detected for diagram.\n")
+                    if self.download_from_current_page(driver, diagram_dir, pdf_only=True, single_file=True):
+                        downloaded = True
+                    driver.close()
+                    driver.switch_to.window(current_window)
+                else:
+                    # No new tab, check if same page loaded the content
+                    self.update_results("  No new tab, checking current page for diagram.\n")
+                    if self.download_from_current_page(driver, diagram_dir, pdf_only=True, single_file=True):
+                        downloaded = True
+            except Exception as e:
+                self.update_results(f"  Clicking diagram link failed: {e}\n")
+        
+        return downloaded
+
+    def download_from_current_page(self, driver, diagram_dir, pdf_only=False, single_file=False):
+        """Download diagrams from the current page."""
         try:
             self.update_results(f"  Analyzing current page for downloads...\n")
-            
-            # Get current page URL and title for debugging
             current_url = driver.current_url
-            current_title = driver.title
-            self.update_results(f"  Current URL: {current_url}\n")
-            self.update_results(f"  Current title: {current_title}\n")
-            
-            # Wait a bit for page to load
             time.sleep(2)
-            
-            # Method 1: Try to download the current page if it's a direct file
-            if any(ext in current_url.lower() for ext in ['.pdf', '.jpg', '.jpeg', '.png', '.gif']):
-                self.update_results(f"  Current page appears to be a direct file, attempting download...\n")
+
+            # Method 1: If the current URL is a direct link to a file
+            file_extensions = ['.pdf'] if pdf_only else ['.pdf', '.jpg', '.jpeg', '.png', '.gif']
+            if any(ext in current_url.lower() for ext in file_extensions):
                 filename = self.download_file_with_selenium(driver, diagram_dir)
                 if filename:
                     self.update_results(f"  Successfully downloaded current page: {filename}\n")
                     return True
-            
+
             # Method 2: Look for download links on the current page
-            download_links = []
+            links_to_download = []
+            all_links = driver.find_elements(By.TAG_NAME, "a")
+            for link in all_links:
+                href = link.get_attribute('href')
+                if href and any(href.lower().endswith(ext) for ext in file_extensions):
+                    links_to_download.append(href)
+
+            self.update_results(f"  Found {len(links_to_download)} potential file links on this page.\n")
+
+            for i, link_url in enumerate(links_to_download):
+                self.update_results(f"  Attempting download from link {i+1}: {link_url}\n")
+                if self.download_file(link_url, diagram_dir):
+                    if single_file:
+                        return True
             
-            # Look for direct file links
-            file_extensions = ['.pdf', '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.zip']
-            for ext in file_extensions:
-                try:
-                    links = driver.find_elements(By.XPATH, f"//a[contains(@href, '{ext}')]")
-                    download_links.extend(links)
-                except:
-                    continue
-            
-            # Look for download buttons
-            download_texts = ['download', 'ダウンロード', 'Download', 'DOWNLOAD']
-            for text in download_texts:
-                try:
-                    links = driver.find_elements(By.XPATH, f"//a[contains(text(), '{text}')]")
-                    download_links.extend(links)
-                except:
-                    continue
-            
-            # Look for any links that might be downloads
-            try:
-                all_links = driver.find_elements(By.TAG_NAME, "a")
-                for link in all_links:
-                    href = link.get_attribute('href')
-                    if href:
-                        # Check if it looks like a download link
-                        if any(ext in href.lower() for ext in file_extensions):
-                            download_links.append(link)
-                        elif 'download' in href.lower() or 'file' in href.lower():
-                            download_links.append(link)
-            except:
-                pass
-            
-            # Look for images that might be diagrams
-            try:
-                images = driver.find_elements(By.TAG_NAME, "img")
-                for img in images:
-                    src = img.get_attribute('src')
-                    if src and any(ext in src.lower() for ext in ['.jpg', '.jpeg', '.png', '.gif']):
-                        # Create a download link for this image
-                        download_links.append({
-                            'url': src,
-                            'type': 'image'
-                        })
-            except:
-                pass
-            
-            self.update_results(f"  Found {len(download_links)} potential download links\n")
-            
-            # Try to download from each link
-            downloaded = False
-            for i, link in enumerate(download_links):
-                try:
-                    if isinstance(link, dict):
-                        # Direct URL (from image src)
-                        href = link['url']
-                        filename = self.download_file(href, diagram_dir)
-                    else:
-                        # Selenium element - try clicking it
-                        href = link.get_attribute('href')
-                        self.update_results(f"  Attempting to click download link {i+1}: {href}\n")
-                        
-                        # Try clicking the link to trigger download
-                        try:
-                            link.click()
-                            time.sleep(2)
-                            filename = self.download_file_with_selenium(driver, diagram_dir)
-                        except:
-                            # If clicking fails, try direct download
-                            filename = self.download_file(href, diagram_dir)
-                    
-                    if filename:
-                        self.update_results(f"  Successfully downloaded: {filename}\n")
-                        downloaded = True
-                    else:
-                        self.update_results(f"  Failed to download: {href}\n")
-                except Exception as e:
-                    self.update_results(f"  Error downloading {href}: {str(e)}\n")
-            
-            # If no downloads found, try to get the page source and look for embedded content
-            if not downloaded:
-                self.update_results(f"  No direct downloads found, checking page source...\n")
-                page_source = driver.page_source
-                
-                # Look for embedded PDFs or images
-                import re
-                pdf_patterns = [
-                    r'src=["\']([^"\']*\.pdf)["\']',
-                    r'href=["\']([^"\']*\.pdf)["\']',
-                    r'url\(["\']?([^"\']*\.pdf)["\']?\)'
-                ]
-                
-                for pattern in pdf_patterns:
-                    matches = re.findall(pattern, page_source, re.IGNORECASE)
-                    for match in matches:
-                        try:
-                            if match.startswith('http'):
-                                full_url = match
-                            else:
-                                full_url = urljoin(current_url, match)
-                            
-                            self.update_results(f"  Found embedded PDF: {full_url}\n")
-                            filename = self.download_file(full_url, diagram_dir)
-                            if filename:
-                                self.update_results(f"  Downloaded embedded PDF: {filename}\n")
-                                downloaded = True
-                        except Exception as e:
-                            self.update_results(f"  Failed to download embedded PDF: {str(e)}\n")
-            
-            return downloaded
+            return False
             
         except Exception as e:
             self.update_results(f"  Error downloading from current page: {str(e)}\n")
             return False
 
     def download_file_with_selenium(self, driver, directory):
-        """Download file using Selenium (for cases where requests is blocked)"""
+        """Download file using Selenium, deriving the filename from the URL."""
         try:
-            # Get the current page source and try to extract the file
             current_url = driver.current_url
             
-            # Try to get the file content using JavaScript
+            # Get filename from URL
+            parsed_url = urlparse(current_url)
+            filename = os.path.basename(parsed_url.path)
+            
+            # If filename is empty or invalid, create one
+            if not filename or '.' not in filename:
+                if '.pdf' in current_url.lower():
+                    ext = '.pdf'
+                elif any(img_ext in current_url.lower() for img_ext in ['.jpg', '.jpeg']):
+                    ext = '.jpg'
+                elif '.png' in current_url.lower():
+                    ext = '.png'
+                elif '.gif' in current_url.lower():
+                    ext = '.gif'
+                else:
+                    ext = '.tmp'
+                filename = f"download_{int(time.time())}{ext}"
+            
+            filename = "".join(c for c in filename if c.isalnum() or c in "._-")
+            filepath = os.path.join(directory, filename)
+            
+            if os.path.exists(filepath):
+                name, ext = os.path.splitext(filename)
+                filename = f"{name}_{int(time.time())}{ext}"
+                filepath = os.path.join(directory, filename)
+
+            # Use asynchronous fetch in JS, which is more reliable
             js_code = """
-            var xhr = new XMLHttpRequest();
-            xhr.open('GET', arguments[0], false);
-            xhr.setRequestHeader('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-            xhr.setRequestHeader('Accept', 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8');
-            xhr.setRequestHeader('Accept-Language', 'en-US,en;q=0.9,ja;q=0.8');
-            xhr.setRequestHeader('Referer', 'https://www.com-et.com/jp/');
-            xhr.send();
-            return xhr.responseText;
+            const callback = arguments[arguments.length - 1];
+            const url = arguments[0];
+            fetch(url)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok: ' + response.statusText);
+                    }
+                    return response.arrayBuffer();
+                })
+                .then(buffer => callback(Array.from(new Uint8Array(buffer))))
+                .catch(error => callback({error: error.message}));
             """
             
-            try:
-                file_content = driver.execute_script(js_code, current_url)
-                
-                # Generate filename
-                filename = f"diagram_{int(time.time())}.pdf"
-                if '.jpg' in current_url.lower() or '.jpeg' in current_url.lower():
-                    filename = f"diagram_{int(time.time())}.jpg"
-                elif '.png' in current_url.lower():
-                    filename = f"diagram_{int(time.time())}.png"
-                elif '.gif' in current_url.lower():
-                    filename = f"diagram_{int(time.time())}.gif"
-                
-                filepath = os.path.join(directory, filename)
-                
-                # Save the file
-                with open(filepath, 'wb') as f:
-                    f.write(file_content.encode('utf-8') if isinstance(file_content, str) else file_content)
-                
-                if os.path.exists(filepath) and os.path.getsize(filepath) > 0:
-                    self.update_results(f"    Successfully downloaded via Selenium: {filename}\n")
-                    return filename
-                else:
-                    self.update_results(f"    Selenium download failed - file is empty\n")
-                    return None
-                    
-            except Exception as e:
-                self.update_results(f"    Selenium download failed: {str(e)}\n")
+            # Use execute_async_script for promise-based JS
+            driver.set_script_timeout(30)
+            result = driver.execute_async_script(js_code, current_url)
+            
+            if isinstance(result, dict) and 'error' in result:
+                self.update_results(f"    Selenium download via JS failed: {result['error']}\n")
+                return None
+
+            file_content = bytes(result)
+            with open(filepath, 'wb') as f:
+                f.write(file_content)
+            
+            if os.path.exists(filepath) and os.path.getsize(filepath) > 0:
+                self.update_results(f"    Successfully downloaded via Selenium: {filename}\n")
+                return filename
+            else:
+                self.update_results(f"    Selenium download failed - file is empty\n")
+                if os.path.exists(filepath): os.remove(filepath)
                 return None
                 
         except Exception as e:
             self.update_results(f"    Error in Selenium download: {str(e)}\n")
+            return None
+
+    def extract_specifications(self, driver, specs_link, specs_href, product_id):
+        """Extract specifications table and convert to Rakuten HTML format"""
+        try:
+            # Click the specifications link
+            try:
+                if specs_link is not None:
+                    driver.execute_script("arguments[0].scrollIntoView(true);", specs_link)
+                    time.sleep(1)
+                    specs_link.click()
+                    time.sleep(3)
+                elif specs_href:
+                    driver.get(specs_href)
+                    time.sleep(3)
+                else:
+                    self.update_results("    No specifications link or URL available\n")
+                    return None
+            except Exception as e:
+                self.update_results(f"    Error clicking specs link: {str(e)}\n")
+                return None
+            
+            current_window = driver.current_window_handle
+            if len(driver.window_handles) > 1:
+                new_window = [h for h in driver.window_handles if h != current_window][0]
+                driver.switch_to.window(new_window)
+            
+            time.sleep(2)
+            
+            specs_table = None
+            table_selectors = ["[class*='spec'] table", "[class*='table']", "table"]
+            
+            for selector in table_selectors:
+                try:
+                    tables = driver.find_elements(By.CSS_SELECTOR, selector)
+                    for table in tables:
+                        if any(k in table.text for k in ['基本情報', '仕様', '質量', '発売時期']):
+                            specs_table = table
+                            break
+                    if specs_table:
+                        break
+                except:
+                    continue
+            
+            if not specs_table:
+                self.update_results(f"    No specifications table found\n")
+                if len(driver.window_handles) > 1:
+                    driver.close()
+                    driver.switch_to.window(current_window)
+                return None
+            
+            table_data = self.extract_table_data(specs_table)
+            rakuten_html = self.generate_rakuten_html(table_data, product_id)
+            
+            if len(driver.window_handles) > 1:
+                driver.close()
+                driver.switch_to.window(current_window)
+            
+            return rakuten_html
+            
+        except Exception as e:
+            self.update_results(f"    Error extracting specifications: {str(e)}\n")
+            try:
+                if len(driver.window_handles) > 1:
+                    driver.close()
+                    driver.switch_to.window(current_window)
+            except:
+                pass
+            return None
+
+    def extract_table_data(self, table_element):
+        """Extract data from specifications table"""
+        table_data = []
+        try:
+            rows = table_element.find_elements(By.TAG_NAME, "tr")
+            current_section = ""
+            for row in rows:
+                try:
+                    headers = row.find_elements(By.TAG_NAME, "th")
+                    cells = row.find_elements(By.TAG_NAME, "td")
+                    if headers and len(cells) == 0:
+                        current_section = headers[0].text.strip()
+                    elif headers and cells:
+                        item_name = headers[0].text.strip()
+                        item_value = cells[0].text.strip()
+                        if item_name and item_value:
+                            table_data.append({'section': current_section, 'item': item_name, 'value': item_value})
+                except:
+                    continue
+        except Exception as e:
+            self.update_results(f"    Error extracting table data: {str(e)}\n")
+        return table_data
+
+    def generate_rakuten_html(self, table_data, product_id):
+        """Generate HTML for Rakuten EC site based on specifications data"""
+        try:
+            html_content = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>{product_id} - 商品仕様</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; margin: 20px; background-color: #f5f5f5; }}
+        .container {{ max-width: 800px; margin: 0 auto; background-color: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
+        h1 {{ color: #333; text-align: center; border-bottom: 2px solid #007bff; padding-bottom: 10px; }}
+        .section-title {{ background-color: #007bff; color: white; padding: 10px; font-weight: bold; border-radius: 4px; margin-top: 20px; }}
+        table {{ width: 100%; border-collapse: collapse; margin: 10px 0; }}
+        th, td {{ border: 1px solid #ddd; padding: 12px; text-align: left; }}
+        th {{ background-color: #f8f9fa; font-weight: bold; width: 30%; }}
+        .product-info {{ background-color: #e9ecef; padding: 15px; border-radius: 4px; margin-bottom: 20px; }}
+        .product-id {{ font-size: 18px; font-weight: bold; color: #007bff; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>商品仕様書</h1>
+        <div class="product-info">
+            <div class="product-id">品番: {product_id}</div>
+        </div>
+"""
+            
+            last_section = None
+            for item in table_data:
+                section = item['section']
+                if section != last_section:
+                    if last_section is not None:
+                        html_content += "        </table>\n"
+                    html_content += f"        <div class=\"section-title\">{section}</div>\n        <table>\n"
+                    last_section = section
+                
+                item_name = item['item'].replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                item_value = item['value'].replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                html_content += f"            <tr><th>{item_name}</th><td>{item_value}</td></tr>\n"
+
+            if last_section is not None:
+                html_content += "        </table>\n"
+            
+            html_content += """
+    </div>
+</body>
+</html>"""
+            return html_content
+        except Exception as e:
+            self.update_results(f"    Error generating Rakuten HTML: {str(e)}\n")
             return None
 
     def download_direct_link(self, diagram, product_id):
@@ -1017,7 +1108,7 @@ class ComEtCrawler:
     
     def download_file(self, url, directory):
         try:
-            self.update_results(f"    Downloading: {url}\n")
+            self.update_results(f"    Downloading from URL: {url}\n")
             
             # Get filename from URL
             parsed_url = urlparse(url)
@@ -1047,57 +1138,39 @@ class ComEtCrawler:
                             ext = ext
                         else:
                             ext = 'jpg'
-                        filename = f"diagram_{int(time.time())}.{ext}"
+                        filename = f"image_{int(time.time())}.{ext}"
                     else:
-                        # Try to guess from URL
-                        if '.pdf' in url.lower():
-                            filename = f"diagram_{int(time.time())}.pdf"
-                        elif any(ext in url.lower() for ext in ['.jpg', '.jpeg', '.png', '.gif']):
-                            for ext in ['.jpg', '.jpeg', '.png', '.gif']:
-                                if ext in url.lower():
-                                    filename = f"diagram_{int(time.time())}{ext}"
-                                    break
-                        else:
-                            filename = f"diagram_{int(time.time())}.pdf"
+                        filename = f"file_{int(time.time())}.dat" # Fallback
                 except:
-                    filename = f"diagram_{int(time.time())}.pdf"
+                    filename = f"file_{int(time.time())}.dat"
             
             filepath = os.path.join(directory, filename)
             
             # Check if file already exists
             if os.path.exists(filepath):
-                filename = f"{os.path.splitext(filename)[0]}_{int(time.time())}{os.path.splitext(filename)[1]}"
+                name, ext = os.path.splitext(filename)
+                filename = f"{name}_{int(time.time())}{ext}"
                 filepath = os.path.join(directory, filename)
             
             # Download file with browser headers
-            self.update_results(f"    Saving to: {filepath}\n")
             headers = self.get_browser_headers()
             response = requests.get(url, headers=headers, timeout=config.DOWNLOAD_TIMEOUT, stream=True)
             response.raise_for_status()
             
-            # Check if response is actually a file
             content_type = response.headers.get('content-type', '')
-            content_length = response.headers.get('content-length', '0')
-            
-            self.update_results(f"    Content-Type: {content_type}, Size: {content_length} bytes\n")
-            
-            # Only download if it looks like a file
-            if (any(ext in content_type.lower() for ext in ['pdf', 'image', 'application']) or
-                int(content_length) > 1000):  # Files should be larger than 1KB
+            if 'text/html' in content_type:
+                self.update_results("    Warning: Link leads to an HTML page, not a direct file. Skipping direct download.\n")
+                return None
                 
-                with open(filepath, 'wb') as f:
-                    for chunk in response.iter_content(chunk_size=config.CHUNK_SIZE):
-                        f.write(chunk)
-                
-                # Verify file was downloaded
-                if os.path.exists(filepath) and os.path.getsize(filepath) > 0:
-                    self.update_results(f"    Successfully downloaded: {filename} ({os.path.getsize(filepath)} bytes)\n")
-                    return filename
-                else:
-                    self.update_results(f"    File download failed - file is empty or missing\n")
-                    return None
+            with open(filepath, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=config.CHUNK_SIZE):
+                    f.write(chunk)
+            
+            if os.path.exists(filepath) and os.path.getsize() > 0:
+                self.update_results(f"    Successfully downloaded: {filename} ({os.path.getsize(filepath)} bytes)\n")
+                return filename
             else:
-                self.update_results(f"    Skipping - doesn't appear to be a file (Content-Type: {content_type})\n")
+                self.update_results(f"    File download failed - file is empty or missing\n")
                 return None
             
         except Exception as e:
@@ -1121,6 +1194,76 @@ class ComEtCrawler:
             'Cache-Control': 'max-age=0',
             'Referer': 'https://www.com-et.com/jp/'
         }
+
+    def download_product_image(self, driver, image_element, diagram_dir):
+        """Click a thumbnail, then find and download the full-size image."""
+        try:
+            original_src = image_element.get_attribute('src')
+            driver.execute_script("arguments[0].scrollIntoView(true);", image_element)
+            time.sleep(1)
+            current_window = driver.current_window_handle
+            existing_handles = set(driver.window_handles)
+
+            # Click the thumbnail to trigger the large image view
+            try:
+                image_element.click()
+                time.sleep(2) # Wait for lightbox or new tab
+            except Exception as e:
+                self.update_results(f"    Could not click product image: {e}\n")
+                return False
+
+            # Case 1: A new tab opened with the large image.
+            new_handles = set(driver.window_handles) - existing_handles
+            if new_handles:
+                self.update_results("    New tab detected, switching to download large image...\n")
+                new_window = list(new_handles)[0]
+                driver.switch_to.window(new_window)
+                time.sleep(1)
+                filename = self.download_file_with_selenium(driver, diagram_dir)
+                driver.close()
+                driver.switch_to.window(current_window)
+                return filename is not None
+
+            # Case 2: The click caused a lightbox/overlay to appear on the same page.
+            try:
+                self.update_results("    No new tab; searching for a lightbox image on the current page...\n")
+                time.sleep(1) # Extra wait for lightbox to render
+                all_images_on_page = driver.find_elements(By.TAG_NAME, "img")
+                
+                best_image_src = None
+                max_area = 0
+
+                for img in all_images_on_page:
+                    if not img.is_displayed():
+                        continue
+                    
+                    img_src = img.get_attribute('src')
+                    if img_src == original_src:
+                        continue
+                        
+                    try:
+                        width = driver.execute_script("return arguments[0].naturalWidth;", img)
+                        height = driver.execute_script("return arguments[0].naturalHeight;", img)
+                        area = width * height
+                        
+                        if area > max_area:
+                            max_area = area
+                            best_image_src = img_src
+                    except Exception:
+                        continue
+                
+                if best_image_src:
+                    self.update_results(f"    Found large image in lightbox: {best_image_src}\n")
+                    if self.download_file(best_image_src, diagram_dir):
+                        return True
+            except Exception as e:
+                self.update_results(f"    Error while searching for lightbox image: {e}\n")
+
+            self.update_results("    Could not find a larger image after clicking. Download failed.\n")
+            return False
+        except Exception as e:
+            self.update_results(f"    An unexpected error occurred in download_product_image: {e}\n")
+            return False
     
     def update_status(self, message):
         self.status_text.set(message)
@@ -1136,4 +1279,4 @@ class ComEtCrawler:
 
 if __name__ == "__main__":
     app = ComEtCrawler()
-    app.run() 
+    app.run()
