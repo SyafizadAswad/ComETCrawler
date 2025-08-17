@@ -4,7 +4,7 @@ import threading
 import os
 import time
 import requests
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin, urlparse, parse_qs
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -17,6 +17,7 @@ from bs4 import BeautifulSoup
 import re
 import urllib.request
 import config
+from selenium.common.exceptions import TimeoutException, WebDriverException
 
 class ComEtCrawler:
     def __init__(self):
@@ -30,6 +31,7 @@ class ComEtCrawler:
         self.status_text = tk.StringVar(value="Ready to search...")
         self.progress_var = tk.DoubleVar()
         self.is_searching = False
+        self.log_file_path = None
         
         # Output directory
         self.output_dir = config.OUTPUT_DIR
@@ -111,12 +113,27 @@ class ComEtCrawler:
         self.progress_var.set(0)
         self.status_text.set("Initializing browser...")
         self.results_text.delete(1.0, tk.END)
+
+        # Set up log file path
+        self.log_file_path = os.path.join(self.output_dir, f"log_{product_id}_{int(time.time())}.txt")
+        with open(self.log_file_path, "w", encoding="utf-8") as log_file:
+            log_file.write(f"--- Starting search for product ID: {product_id} at {time.ctime()} ---\n\n")
         
         # Start search in separate thread
         thread = threading.Thread(target=self.perform_search, args=(product_id,))
         thread.daemon = True
         thread.start()
-        
+    
+    def log_and_update(self, message):
+        """Updates the GUI and logs the message to a file."""
+        self.update_results(f"{message}\n")
+        try:
+            if self.log_file_path:
+                with open(self.log_file_path, "a", encoding="utf-8") as log_file:
+                    log_file.write(f"[{time.ctime()}] {message}\n")
+        except Exception as e:
+            self.update_results(f"Error writing to log file: {e}\n")
+
     def perform_search(self, product_id):
         try:
             # Setup Chrome options
@@ -171,28 +188,30 @@ class ComEtCrawler:
             
             # Method 1: Try with ChromeDriverManager
             try:
-                self.update_status("Initializing Chrome driver (method 1)...")
+                self.log_and_update("Initializing Chrome driver (method 1)...")
                 service = Service(ChromeDriverManager().install())
                 driver = webdriver.Chrome(service=service, options=chrome_options)
-                self.update_status("Chrome driver initialized successfully!")
+                self.log_and_update("Chrome driver initialized successfully!")
             except Exception as e1:
                 error_messages.append(f"Method 1 failed: {str(e1)}")
+                self.log_and_update(f"Method 1 failed: {str(e1)}")
                 
                 # Method 2: Try with ChromeService
                 try:
-                    self.update_status("Trying alternative Chrome driver initialization...")
+                    self.log_and_update("Trying alternative Chrome driver initialization...")
                     from selenium.webdriver.chrome.service import Service as ChromeService
                     from webdriver_manager.chrome import ChromeDriverManager
                     
                     service = ChromeService(ChromeDriverManager().install())
                     driver = webdriver.Chrome(service=service, options=chrome_options)
-                    self.update_status("Chrome driver initialized successfully!")
+                    self.log_and_update("Chrome driver initialized successfully!")
                 except Exception as e2:
                     error_messages.append(f"Method 2 failed: {str(e2)}")
+                    self.log_and_update(f"Method 2 failed: {str(e2)}")
                     
                     # Method 3: Try with minimal options
                     try:
-                        self.update_status("Trying with minimal Chrome options...")
+                        self.log_and_update("Trying with minimal Chrome options...")
                         minimal_options = Options()
                         minimal_options.add_argument("--headless")
                         minimal_options.add_argument("--no-sandbox")
@@ -203,13 +222,14 @@ class ComEtCrawler:
                         
                         service = Service(ChromeDriverManager().install())
                         driver = webdriver.Chrome(service=service, options=minimal_options)
-                        self.update_status("Chrome driver initialized with minimal options!")
+                        self.log_and_update("Chrome driver initialized with minimal options!")
                     except Exception as e3:
                         error_messages.append(f"Method 3 failed: {str(e3)}")
+                        self.log_and_update(f"Method 3 failed: {str(e3)}")
                         
                         # Method 4: Try without headless mode
                         try:
-                            self.update_status("Trying without headless mode...")
+                            self.log_and_update("Trying without headless mode...")
                             visible_options = Options()
                             visible_options.add_argument("--no-sandbox")
                             visible_options.add_argument("--disable-dev-shm_usage")
@@ -220,32 +240,39 @@ class ComEtCrawler:
                             
                             service = Service(ChromeDriverManager().install())
                             driver = webdriver.Chrome(service=service, options=visible_options)
-                            self.update_status("Chrome driver initialized in visible mode!")
+                            self.log_and_update("Chrome driver initialized in visible mode!")
                         except Exception as e4:
                             error_messages.append(f"Method 4 failed: {str(e4)}")
+                            self.log_and_update(f"Method 4 failed: {str(e4)}")
                             
                             # Final attempt: Try with system PATH
                             try:
-                                self.update_status("Trying with system ChromeDriver...")
+                                self.log_and_update("Trying with system ChromeDriver...")
                                 driver = webdriver.Chrome(options=chrome_options)
-                                self.update_status("Chrome driver initialized from system PATH!")
+                                self.log_and_update("Chrome driver initialized from system PATH!")
                             except Exception as e5:
                                 error_messages.append(f"Method 5 failed: {str(e5)}")
+                                self.log_and_update(f"Method 5 failed: {str(e5)}")
                                 raise Exception(f"All Chrome driver initialization methods failed. Errors: {'; '.join(error_messages)}. Please run 'python troubleshoot_chrome.py' for detailed diagnostics.")
             
             if driver is None:
+                self.log_and_update("Failed to initialize Chrome driver after all attempts.")
                 raise Exception("Failed to initialize Chrome driver after all attempts.")
             
             try:
-                self.update_status("Navigating to COM-ET website...")
+                self.log_and_update("Navigating to COM-ET website...")
                 driver.get(config.WEBSITE_URL)
                 
                 # Wait for page to load
-                WebDriverWait(driver, config.SEARCH_TIMEOUT).until(
-                    EC.presence_of_element_located((By.TAG_NAME, "body"))
-                )
+                try:
+                    WebDriverWait(driver, config.SEARCH_TIMEOUT).until(
+                        EC.presence_of_element_located((By.TAG_NAME, "body"))
+                    )
+                    self.log_and_update("Page loaded successfully.")
+                except TimeoutException:
+                    self.log_and_update("Timeout waiting for page to load.")
                 
-                self.update_status("Looking for search bar...")
+                self.log_and_update("Looking for search bar...")
                 
                 # Use the specific CSS selector provided by the user
                 search_selector = "div.searchArea.incSearchOptions input#searchBox"
@@ -256,19 +283,23 @@ class ComEtCrawler:
                         EC.presence_of_element_located((By.CSS_SELECTOR, search_selector))
                     )
                 except Exception as e:
+                    self.log_and_update(f"Could not find search input field with selector '{search_selector}': {str(e)}")
                     raise Exception(f"Could not find search input field with selector '{search_selector}': {str(e)}")
                 
                 if not (search_input and search_input.is_displayed() and search_input.is_enabled()):
+                    self.log_and_update("Search input field is not visible or enabled.")
                     raise Exception("Search input field is not visible or enabled.")
                 
-                self.update_status(f"Entering product ID: {product_id}")
+                self.log_and_update(f"Entering product ID: {product_id}")
                 
                 # Wait for element to be interactable
                 try:
                     WebDriverWait(driver, 10).until(
                         EC.element_to_be_clickable((By.CSS_SELECTOR, search_selector))
                     )
+                    self.log_and_update("Search input field is clickable.")
                 except:
+                    self.log_and_update("Search input field is not clickable, trying simpler approach.")
                     # If that fails, try a simpler approach
                     try:
                         WebDriverWait(driver, 10).until(
@@ -279,6 +310,7 @@ class ComEtCrawler:
                 
                 # Clear and enter product ID with better interaction
                 try:
+                    self.log_and_update("Attempting to send keys to search field...")
                     # Scroll to element to ensure it's visible
                     driver.execute_script("arguments[0].scrollIntoView(true);", search_input)
                     time.sleep(1)
@@ -293,22 +325,27 @@ class ComEtCrawler:
                     
                     # Submit the search
                     search_input.send_keys(Keys.RETURN)
+                    self.log_and_update("Submitted search by pressing RETURN.")
                 except Exception as e:
                     # Fallback: try JavaScript interaction
-                    self.update_status("Trying JavaScript interaction...")
+                    self.log_and_update("Failed to send keys. Trying JavaScript interaction...")
                     try:
                         driver.execute_script(f"arguments[0].value = '{product_id}';", search_input)
                         driver.execute_script("arguments[0].form.submit();", search_input)
+                        self.log_and_update("Submitted search via JavaScript.")
                     except:
                         # Last resort: try to find and click a search button
+                        self.log_and_update("JavaScript submission failed. Trying to find a search button.")
                         try:
                             search_button = driver.find_element(By.CSS_SELECTOR, "button[type='submit'], input[type='submit'], .search-button, .btn-button")
                             search_button.click()
+                            self.log_and_update("Submitted search by clicking a button.")
                         except:
+                            self.log_and_update(f"Could not interact with search field: {str(e)}")
                             raise Exception(f"Could not interact with search field: {str(e)}")
                 
                 # Wait for search results to load
-                self.update_status("Waiting for search results to load...")
+                self.log_and_update("Waiting for search results to load...")
                 time.sleep(5)  # Give more time for dynamic content
                 
                 # Wait for search results to be visible
@@ -316,14 +353,15 @@ class ComEtCrawler:
                     WebDriverWait(driver, 15).until(
                         EC.presence_of_element_located((By.TAG_NAME, "body"))
                     )
+                    self.log_and_update("Search results page body loaded.")
                 except:
-                    pass
+                    self.log_and_update("Timeout waiting for search results page body. Proceeding anyway.")
                 
                 # Check if we're still on the search page (search might have failed)
                 current_url = driver.current_url
                 if "search" not in current_url.lower() and "result" not in current_url.lower():
+                    self.log_and_update("Search may have failed. URL does not indicate a search result page. Trying alternative method...")
                     # Try alternative search method using JavaScript
-                    self.update_status("Search may have failed, trying alternative method...")
                     try:
                         # Try to find and fill search form using JavaScript
                         js_code = f"""
@@ -338,6 +376,7 @@ class ComEtCrawler:
                         """
                         driver.execute_script(js_code)
                         time.sleep(1)
+                        self.log_and_update("Filled search form with JavaScript.")
                         
                         # Try to submit the form
                         submit_js = """
@@ -352,15 +391,16 @@ class ComEtCrawler:
                         """
                         driver.execute_script(submit_js)
                         time.sleep(5)
-                    except:
-                        pass
+                        self.log_and_update("Submitted search form with JavaScript.")
+                    except Exception as e:
+                        self.log_and_update(f"Alternative search method with JavaScript failed: {str(e)}")
                 
                 # Get current page source
                 page_source = driver.page_source
                 soup = BeautifulSoup(page_source, 'html.parser')
                 
                 # Look for product containers on search results page
-                self.update_status("Analyzing search results page for product containers...")
+                self.log_and_update("Analyzing search results page for product containers...")
                 
                 # Find product containers using Selenium for better interaction
                 product_containers = []
@@ -370,8 +410,9 @@ class ComEtCrawler:
                     WebDriverWait(driver, 10).until(
                         EC.presence_of_element_located((By.CSS_SELECTOR, "body"))
                     )
-                except:
-                    pass
+                    self.log_and_update("Search results container body is present.")
+                except TimeoutException:
+                    self.log_and_update("Timeout waiting for search results container body.")
                 
                 # Look for product containers with various selectors
                 container_selectors = [
@@ -390,6 +431,7 @@ class ComEtCrawler:
                 
                 for selector in container_selectors:
                     try:
+                        self.log_and_update(f"Trying selector: {selector}")
                         containers = driver.find_elements(By.CSS_SELECTOR, selector)
                         if containers:
                             # Filter out header rows and empty rows
@@ -405,14 +447,15 @@ class ComEtCrawler:
                             
                             if filtered_containers:
                                 product_containers = filtered_containers
-                                self.update_status(f"Found {len(filtered_containers)} product containers using selector: {selector}")
+                                self.log_and_update(f"Found {len(filtered_containers)} product containers using selector: {selector}")
                                 break
-                    except:
+                    except Exception as e:
+                        self.log_and_update(f"Selector {selector} failed: {e}")
                         continue
                 
                 # If no containers found with specific selectors, try to find by content
                 if not product_containers:
-                    self.update_status("Looking for product containers by content...")
+                    self.log_and_update("No product containers found with specific selectors. Looking for product containers by content...")
                     try:
                         # Look for elements containing product information
                         all_divs = driver.find_elements(By.TAG_NAME, "div")
@@ -423,11 +466,11 @@ class ComEtCrawler:
                                     product_containers.append(div)
                             except:
                                 continue
-                    except:
-                        pass
+                    except Exception as e:
+                        self.log_and_update(f"Searching by content failed: {e}")
                 
                 if not product_containers:
-                    self.update_status("No product containers found, trying alternative approach...")
+                    self.log_and_update("No product containers found, trying alternative approach...")
                     # Try to find any elements that might contain products
                     try:
                         all_elements = driver.find_elements(By.CSS_SELECTOR, "div, li, section")
@@ -438,10 +481,10 @@ class ComEtCrawler:
                                     product_containers.append(element)
                             except:
                                 continue
-                    except:
-                        pass
+                    except Exception as e:
+                        self.log_and_update(f"Alternative approach failed: {e}")
                 
-                self.update_status(f"Found {len(product_containers)} potential product containers")
+                self.log_and_update(f"Found {len(product_containers)} potential product containers")
                 
                 # Process each product container
                 products_data = []
@@ -450,7 +493,7 @@ class ComEtCrawler:
 
                 for i, container in enumerate(product_containers):
                     try:
-                        self.update_status(f"Extracting info from container {i+1}/{len(product_containers)}")
+                        self.log_and_update(f"Extracting info from container {i+1}/{len(product_containers)}")
                         
                         # Extract product information from container
                         product_info = self.extract_product_info(container, driver)
@@ -458,15 +501,15 @@ class ComEtCrawler:
                         if product_info and product_info['product_id'] not in seen_product_ids:
                             products_data.append(product_info)
                             seen_product_ids.add(product_info['product_id'])
-                            self.update_results(f"Found product: {product_info['product_id']} - {product_info['product_name']}\n")
+                            self.log_and_update(f"Found product: {product_info['product_id']} - {product_info['product_name']}")
                         elif product_info and product_info['product_id'] in seen_product_ids:
-                            self.update_results(f"Skipping duplicate product: {product_info['product_id']}\n")
+                            self.log_and_update(f"Skipping duplicate product: {product_info['product_id']}")
                         
                     except Exception as e:
-                        self.update_results(f"Error extracting from container {i+1}: {str(e)}\n")
+                        self.log_and_update(f"Error extracting from container {i+1}: {str(e)}")
                 
                 if not products_data:
-                    self.update_results("No products found in containers. Trying fallback method...\n")
+                    self.log_and_update("No products found in containers. Trying fallback method...")
                     # Fallback: try to find any 商品図 links on the page
                     fallback_products = self.fallback_product_detection(driver)
                     for product in fallback_products:
@@ -474,11 +517,11 @@ class ComEtCrawler:
                             products_data.append(product)
                             seen_product_ids.add(product['product_id'])
 
-                self.update_status(f"Found {len(products_data)} unique products. Starting downloads...")
-                self.update_results(f"Found {len(products_data)} unique products to process.\n\n")
+                self.log_and_update(f"Found {len(products_data)} unique products. Starting downloads...")
+                self.log_and_update(f"Found {len(products_data)} unique products to process.")
                 
                 if not products_data:
-                    self.update_results("No products found. The search might not have returned any results.\n")
+                    self.log_and_update("No products found. The search might not have returned any results.")
                     return
                 
                 # Process each product and download diagrams
@@ -491,25 +534,27 @@ class ComEtCrawler:
                         # Ensure we're on the search results page before processing each product
                         self.ensure_on_search_results_page(driver)
                         
-                        self.update_results(f"Starting processing for product {i+1}/{len(products_data)}: {product['product_id']}\n")
+                        self.log_and_update(f"Starting processing for product {i+1}/{len(products_data)}: {product['product_id']}")
                         if self.process_product_diagrams(driver, product):
                             downloaded_count += 1
-                            self.update_results(f"Successfully completed processing for {product['product_id']}\n")
+                            self.log_and_update(f"Successfully completed processing for {product['product_id']}")
                         else:
-                            self.update_results(f"No downloads completed for {product['product_id']}\n")
+                            self.log_and_update(f"No downloads completed for {product['product_id']}")
                     except Exception as e:
-                        self.update_results(f"Error processing {product['product_id']}: {str(e)}\n")
+                        self.log_and_update(f"Error processing {product['product_id']}: {str(e)}")
                 
                 self.progress_var.set(100)
                 self.update_status(f"Search completed. Downloaded items for {downloaded_count} products.")
-                self.update_results(f"\nSearch completed. Downloaded items for {downloaded_count} products.\n")
+                self.log_and_update(f"Search completed. Downloaded items for {downloaded_count} products.")
                 
             finally:
-                driver.quit()
+                if driver:
+                    driver.quit()
+                self.log_and_update("Browser closed.")
                 
         except Exception as e:
             self.update_status(f"Error: {str(e)}")
-            self.update_results(f"Error occurred: {str(e)}\n")
+            self.log_and_update(f"FATAL ERROR occurred: {str(e)}")
         finally:
             self.is_searching = False
             self.search_button.config(state='normal')
@@ -520,25 +565,26 @@ class ComEtCrawler:
             current_url = driver.current_url
             # Check if we're on a search results page
             if "item_search" not in current_url and "search" not in current_url:
-                self.update_results("    Not on search results page, attempting to return...\n")
+                self.log_and_update("    Not on search results page, attempting to return...")
                 # Try to go back to the search results
                 driver.back()
                 time.sleep(2)
                 
                 # If still not on search results, try to navigate to the original search URL
                 if "item_search" not in driver.current_url:
-                    self.update_results("    Attempting to return to search results page...\n")
+                    self.log_and_update("    Attempting to return to search results page...")
                     # You might need to store the original search URL and navigate back to it
                     # For now, we'll just log the issue
-                    self.update_results(f"    Current URL: {driver.current_url}\n")
+                    self.log_and_update(f"    Current URL: {driver.current_url}")
         except Exception as e:
-            self.update_results(f"    Error ensuring on search results page: {str(e)}\n")
+            self.log_and_update(f"    Error ensuring on search results page: {str(e)}")
 
     def extract_product_info(self, container, driver):
         """
         Extract product information from a container element,
         prioritizing diagram links that precisely match the product_id.
         """
+        self.log_and_update("  Starting to extract product info...")
         try:
             product_id = None
             product_name = "Unknown Product"
@@ -550,6 +596,7 @@ class ComEtCrawler:
             
             # Find the '品番' (product ID) link
             try:
+                self.log_and_update("  Attempting to find 品番 link...")
                 # Find the dt with '品番' text
                 hinban_dt = container.find_element(By.XPATH, ".//dt[contains(text(), '品番')]")
                 # Find the sibling dd element
@@ -557,123 +604,149 @@ class ComEtCrawler:
                 # Find the link within the dd element
                 product_id_link = hinban_dd.find_element(By.TAG_NAME, "a")
                 product_id = product_id_link.text.strip()
+                self.log_and_update(f"  Found product ID: {product_id}")
             except Exception as e:
-                self.update_results(f"Error finding 品番 link: {str(e)}\n")
+                self.log_and_update(f"  Error finding 品番 link: {str(e)}")
                 return None
             
             # Find the '商品名' (product name)
             try:
+                self.log_and_update("  Attempting to find 商品名...")
                 product_name_dd = container.find_element(By.XPATH, ".//dt[contains(text(), '商品名')]/following-sibling::dd")
                 product_name = product_name_dd.text.strip()
+                self.log_and_update(f"  Found product name: {product_name}")
             except:
+                self.log_and_update("  Product name not found.")
                 pass
             
             if not product_id:
+                self.log_and_update("  Product ID is empty, skipping this container.")
                 return None
             
             all_links_in_container = container.find_elements(By.TAG_NAME, "a")
+            self.log_and_update(f"  Found {len(all_links_in_container)} links in total within the container.")
             
             # --- Diagram Link Selection Logic ---
-            # Priority 1: Find a diagram link that explicitly contains the product_id as a distinct part in its href
+            self.log_and_update("  Searching for Diagram link (商品図)...")
             found_exact_diagram = False
             for link in all_links_in_container:
                 href = link.get_attribute('href')
                 link_text = link.text.strip()
                 if '商品図' in link_text and href:
+                    self.log_and_update(f"    Found a link with '商品図' text: {link_text} ({href})")
                     parsed_path = urlparse(href).path
                     filename = os.path.basename(parsed_path)
                     
-                    # Use regex word boundaries to match the exact product_id in the filename/path
-                    # This prevents matching "CS902B" within "CS902BVN"
                     if re.search(r'\b' + re.escape(product_id) + r'\b', filename, re.IGNORECASE):
                         diagram_link = link
                         diagram_href = href
                         found_exact_diagram = True
-                        break # Found the most relevant one, break early
+                        self.log_and_update(f"    Found exact diagram match for product ID: {diagram_href}")
+                        break
             
-            # Priority 2: If no exact match, fall back to general 商品図 link within the container
             if not found_exact_diagram:
+                self.log_and_update("    No exact diagram match found. Falling back to general search.")
                 for link in all_links_in_container:
                     href = link.get_attribute('href')
                     link_text = link.text.strip()
                     if '商品図' in link_text:
                         diagram_link = link
                         diagram_href = href
-                        break # Take the first general 商品図 link found
+                        self.log_and_update(f"    Found general diagram link: {diagram_href}")
+                        break
                     elif href and ('diagram' in href.lower() or 'drawing' in href.lower()):
-                        if not diagram_link: # Only assign if nothing better found yet
+                        if not diagram_link:
                             diagram_link = link
                             diagram_href = href
+                            self.log_and_update(f"    Found fallback diagram link by keyword: {diagram_href}")
 
             # --- Specifications Link Selection Logic ---
-            # Look for 仕様一覧 links in the productLabels section
-            specs_links = container.find_elements(By.CSS_SELECTOR, "ul.productLabels a")
+            self.log_and_update("  Searching for Specifications link (仕様一覧)...")
+            specs_links = []
             
-            # If no specs links found in current container, try to find them in the parent tr
+            # Method 1: Look for 仕様一覧 links in the productLabels section
+            try:
+                specs_links = container.find_elements(By.CSS_SELECTOR, "ul.productLabels a")
+                self.log_and_update(f"    Method 1 found {len(specs_links)} potential links.")
+            except Exception as e:
+                self.log_and_update(f"    Method 1 (CSS Selector) failed: {str(e)}")
+            
+            # Fallback if Method 1 fails
             if not specs_links:
                 try:
                     # If we're in a td element, look in the entire tr
                     if container.tag_name == "td":
                         parent_tr = container.find_element(By.XPATH, "./..")
                         specs_links = parent_tr.find_elements(By.CSS_SELECTOR, "ul.productLabels a")
+                        self.log_and_update(f"    Method 1 fallback on parent TR found {len(specs_links)} links.")
                     # If we're in a th element, look in the sibling td
                     elif container.tag_name == "th":
                         parent_tr = container.find_element(By.XPATH, "./..")
                         td_element = parent_tr.find_element(By.TAG_NAME, "td")
                         specs_links = td_element.find_elements(By.CSS_SELECTOR, "ul.productLabels a")
-                except:
-                    pass
-            
+                        self.log_and_update(f"    Method 1 fallback on sibling TD found {len(specs_links)} links.")
+                except Exception as e:
+                    self.log_and_update(f"    Method 1 fallback failed: {str(e)}")
+
+            found_specs_link_to_use = False
             for link in specs_links:
                 href = link.get_attribute('href')
                 link_text = link.text.strip()
                 if '仕様一覧' in link_text and href:
-                    # Verify this specs link is for the current product
-                    if product_id in href or f"hinban={product_id}" in href:
+                    self.log_and_update(f"    Found a link with '仕様一覧' text: {link_text} ({href})")
+                    
+                    # New logic: Proceed with extraction if the link matches the base URL pattern, without strict hinban validation
+                    if "https://www.com-et.com/jp/item_view_spec/" in href:
                         specs_link = link
                         specs_href = href
+                        found_specs_link_to_use = True
+                        self.log_and_update(f"    Link URL matches the specifications view pattern. Specs link found: {specs_href}")
                         break
-
+                    else:
+                        self.log_and_update(f"    Link found, but URL does not match the expected pattern. Skipping validation: {href}")
+            
+            if not found_specs_link_to_use:
+                self.log_and_update("  No valid Specifications link found for this product.")
+            
             # --- Product Images Selection Logic ---
-            # Find product images by looking for anchor tags with href to search.toto.jp/img/
-            # and categorize them by the alt attribute which contains the product ID
+            self.log_and_update("  Searching for product images...")
             product_images = []
             
-            # First, try to find images in the current container (th element)
+            # Find all image links based on the URL pattern, regardless of alt text.
             image_links = container.find_elements(By.CSS_SELECTOR, "a[href*='search.toto.jp/img/']")
+            self.log_and_update(f"    Found {len(image_links)} image links in container.")
             
-            # If no images found in current container, try to find the corresponding th element
             if not image_links:
                 try:
-                    # If we're in a td element, find the corresponding th element in the same tr
+                    # If no images found in current container, try parent/sibling.
                     if container.tag_name == "td":
                         parent_tr = container.find_element(By.XPATH, "./..")
                         th_element = parent_tr.find_element(By.TAG_NAME, "th")
                         image_links = th_element.find_elements(By.CSS_SELECTOR, "a[href*='search.toto.jp/img/']")
-                    # If we're in a th element, we already have the images
+                        self.log_and_update(f"    Found {len(image_links)} image links in parent/sibling.")
                     elif container.tag_name == "th":
                         image_links = container.find_elements(By.CSS_SELECTOR, "a[href*='search.toto.jp/img/']")
-                except:
-                    pass
+                except Exception as e:
+                    self.log_and_update(f"    Error finding images in parent/sibling: {str(e)}")
             
             for link in image_links:
                 try:
                     href = link.get_attribute('href')
                     alt_text = link.get_attribute('alt') or ""
                     
-                    # Check if this image belongs to the current product
-                    if product_id in alt_text or alt_text == product_id:
-                        # Create a dictionary to store image info
-                        image_info = {
-                            'href': href,
-                            'alt': alt_text,
-                            'element': link
-                        }
-                        product_images.append(image_info)
+                    # New logic: Don't strictly validate alt text. Just assume the link is for this product.
+                    image_info = {
+                        'href': href,
+                        'alt': alt_text,
+                        'element': link
+                    }
+                    product_images.append(image_info)
+                    self.log_and_update(f"    Collected image link: {href}")
                 except Exception as e:
-                    self.update_results(f"Error processing image link: {str(e)}\n")
+                    self.log_and_update(f"    Error processing image link: {str(e)}")
                     continue
             
+            self.log_and_update("  Finished extracting product info.")
             return {
                 'product_id': product_id,
                 'product_name': product_name,
@@ -687,15 +760,17 @@ class ComEtCrawler:
             }
             
         except Exception as e:
-            self.update_results(f"Error extracting product info: {str(e)}\n")
+            self.log_and_update(f"  Error extracting product info: {str(e)}")
             return None
 
     def fallback_product_detection(self, driver):
         """Fallback method to detect products when containers are not found"""
+        self.log_and_update("  Starting fallback product detection...")
         products_data = []
         try:
             # Look for any 商品図 links on the page
             diagram_links = driver.find_elements(By.XPATH, "//a[contains(text(), '商品図')]")
+            self.log_and_update(f"  Fallback: Found {len(diagram_links)} '商品図' links.")
             
             for i, link in enumerate(diagram_links):
                 try:
@@ -707,8 +782,10 @@ class ComEtCrawler:
                     product_id_match = re.search(r'◆([A-Z0-9]+)', parent_text)
                     if product_id_match:
                         product_id = product_id_match.group(1)
+                        self.log_and_update(f"  Fallback: Detected product ID '{product_id}' from nearby text.")
                     else:
                         product_id = f"Product_{i+1}"
+                        self.log_and_update(f"  Fallback: Could not detect product ID from text, using generic ID '{product_id}'.")
                     
                     products_data.append({
                         'product_id': product_id,
@@ -718,16 +795,16 @@ class ComEtCrawler:
                     })
                     
                 except Exception as e:
-                    self.update_results(f"Error in fallback detection: {str(e)}\n")
+                    self.log_and_update(f"  Error in fallback detection: {str(e)}")
                     
         except Exception as e:
-            self.update_results(f"Fallback detection failed: {str(e)}\n")
+            self.log_and_update(f"  Fallback detection failed: {str(e)}")
         
         return products_data
 
     def process_product_diagrams(self, driver, product):
         """Process diagrams and specifications for a specific product in sequence."""
-        self.update_results(f"\n--- Processing Product: {product['product_id']} ---\n")
+        self.log_and_update(f"\n--- Processing Product: {product['product_id']} ---\n")
         downloaded_something = False
         
         try:
@@ -738,14 +815,15 @@ class ComEtCrawler:
             product_dir = os.path.join(self.output_dir, product['product_id'])
             diagram_dir = os.path.join(product_dir, config.DIAGRAM_FOLDER_NAME)
             os.makedirs(diagram_dir, exist_ok=True)
+            self.log_and_update(f"  Created product directory: {product_dir}")
             
             # 1. Download Product Images (maximum 2 per product ID)
             if product.get('product_images'):
-                self.update_results(f"Image: Attempting to download {min(2, len(product['product_images']))} images for {product['product_id']}...\n")
+                self.log_and_update(f"  Image: Attempting to download {min(2, len(product['product_images']))} images for {product['product_id']}...")
                 downloaded_image_count = 0
                 for image_info in product['product_images']:
                     if downloaded_image_count >= 2:
-                        self.update_results("  Reached maximum of 2 product images, skipping further images.\n")
+                        self.log_and_update("  Reached maximum of 2 product images, skipping further images.")
                         break
                     
                     try:
@@ -753,54 +831,64 @@ class ComEtCrawler:
                             downloaded_something = True
                             downloaded_image_count += 1
                     except Exception as e:
-                        self.update_results(f"  Error during product image download for one image: {str(e)}\n")
+                        self.log_and_update(f"  Error during product image download for one image: {str(e)}")
             else:
-                self.update_results(f"  No product images found for {product['product_id']} with the current selector.\n")
+                self.log_and_update(f"  No product images found for {product['product_id']} with the current selector.")
 
             # 2. Process 商品図 (Product Diagram)
             if product.get('diagram_link') or product.get('diagram_href'):
                 try:
-                    self.update_results(f"Diagram (商品図): Attempting to download for {product['product_id']}...\n")
+                    self.log_and_update(f"  Diagram (商品図): Attempting to download for {product['product_id']}...")
                     if self.handle_diagram_download(driver, product, diagram_dir):
                         downloaded_something = True
+                        self.log_and_update("  Diagram download process completed successfully.")
+                    else:
+                        self.log_and_update("  Diagram download process failed.")
                 except Exception as e:
-                    self.update_results(f"  Error downloading diagram: {str(e)}\n")
+                    self.log_and_update(f"  Error downloading diagram: {str(e)}")
             else:
-                self.update_results(f"  No 商品図 link found for {product['product_id']}.\n")
+                self.log_and_update(f"  No 商品図 link found for {product['product_id']}.")
             
             # 3. Process 仕様一覧 (Specifications)
             if product.get('specs_link') or product.get('specs_href'):
                 try:
-                    self.update_results(f"Specifications (仕様一覧): Attempting to process for {product['product_id']}...\n")
+                    self.log_and_update(f"  Specifications (仕様一覧): Attempting to process for {product['product_id']}...")
                     specs_html = self.extract_specifications(driver, product.get('specs_link'), product.get('specs_href'), product['product_id'])
                     if specs_html:
                         specs_file = os.path.join(product_dir, f"{product['product_id']}_specifications.html")
                         with open(specs_file, 'w', encoding='utf-8') as f:
                             f.write(specs_html)
-                        self.update_results(f"  Specifications saved: {specs_file}\n")
+                        self.log_and_update(f"  Specifications saved: {specs_file}")
                         downloaded_something = True
+                    else:
+                        self.log_and_update("  Specifications extraction failed.")
                 except Exception as e:
-                    self.update_results(f"  Error processing specifications: {str(e)}\n")
+                    self.log_and_update(f"  Error processing specifications: {str(e)}")
             else:
-                self.update_results(f"  No 仕様一覧 link found for {product['product_id']}.\n")
+                self.log_and_update(f"  No 仕様一覧 link found for {product['product_id']}.")
             
             # Ensure we return to the original window (search results page)
             try:
                 if driver.current_window_handle != original_window:
+                    self.log_and_update("  Returning to original window after processing.")
                     driver.switch_to.window(original_window)
-            except:
+                else:
+                    self.log_and_update("  Already on the original window.")
+            except Exception as e:
+                self.log_and_update(f"  Error returning to original window: {str(e)}")
                 # If original window is closed, try to switch to any available window
                 try:
                     available_windows = driver.window_handles
                     if available_windows:
+                        self.log_and_update("  Original window closed, switching to first available window.")
                         driver.switch_to.window(available_windows[0])
-                except:
-                    pass
+                except Exception as e:
+                    self.log_and_update(f"  Could not switch to any available window: {str(e)}")
             
             return downloaded_something
                 
         except Exception as e:
-            self.update_results(f"  Error processing product: {str(e)}\n")
+            self.log_and_update(f"  Error processing product: {str(e)}")
             # Try to return to original window even if there's an error
             try:
                 if driver.current_window_handle != original_window:
@@ -818,17 +906,18 @@ class ComEtCrawler:
             href = link_element.get_attribute('href')
         
         if href:
-            self.update_results(f"  Link href: {href}\n")
+            self.log_and_update(f"  Link href: {href}")
 
         # First, try direct download if the href is a PDF link
         if href and href.lower().endswith('.pdf'):
-            self.update_results("  Direct PDF link found, attempting direct download.\n")
+            self.log_and_update("  Direct PDF link found, attempting direct download.")
             if self.download_file(href, diagram_dir):
                 return True
 
         # If it's not a direct link or direct download fails, try clicking
         if link_element:
             try:
+                self.log_and_update("  Attempting to click the diagram link.")
                 driver.execute_script("arguments[0].scrollIntoView(true);", link_element)
                 time.sleep(1)
                 
@@ -842,18 +931,18 @@ class ComEtCrawler:
                 if new_handles:
                     new_window = list(new_handles)[0]
                     driver.switch_to.window(new_window)
-                    self.update_results("  New tab detected for diagram.\n")
+                    self.log_and_update("  New tab detected for diagram. Switched to it.")
                     if self.download_from_current_page(driver, diagram_dir, pdf_only=True, single_file=True):
                         downloaded = True
+                    self.log_and_update("  Closing new tab and switching back to original.")
                     driver.close()
                     driver.switch_to.window(current_window)
                 else:
-                    # No new tab, check if same page loaded the content
-                    self.update_results("  No new tab, checking current page for diagram.\n")
+                    self.log_and_update("  No new tab opened, checking current page for diagram.")
                     if self.download_from_current_page(driver, diagram_dir, pdf_only=True, single_file=True):
                         downloaded = True
             except Exception as e:
-                self.update_results(f"  Clicking diagram link failed: {e}\n")
+                self.log_and_update(f"  Clicking diagram link failed: {e}")
                 # Try to return to original window if there's an error
                 try:
                     if driver.current_window_handle != current_window:
@@ -866,16 +955,17 @@ class ComEtCrawler:
     def download_from_current_page(self, driver, diagram_dir, pdf_only=False, single_file=False):
         """Download diagrams from the current page."""
         try:
-            self.update_results(f"  Analyzing current page for downloads...\n")
+            self.log_and_update(f"  Analyzing current page for downloads...")
             current_url = driver.current_url
             time.sleep(2)
 
             # Method 1: If the current URL is a direct link to a file
             file_extensions = ['.pdf'] if pdf_only else ['.pdf', '.jpg', '.jpeg', '.png', '.gif']
             if any(ext in current_url.lower() for ext in file_extensions):
+                self.log_and_update("  Current URL is a direct file link. Attempting download with Selenium...")
                 filename = self.download_file_with_selenium(driver, diagram_dir)
                 if filename:
-                    self.update_results(f"  Successfully downloaded current page: {filename}\n")
+                    self.log_and_update(f"  Successfully downloaded current page: {filename}")
                     return True
 
             # Method 2: Look for download links on the current page
@@ -886,10 +976,13 @@ class ComEtCrawler:
                 if href and any(href.lower().endswith(ext) for ext in file_extensions):
                     links_to_download.append(href)
 
-            self.update_results(f"  Found {len(links_to_download)} potential file links on this page.\n")
+            self.log_and_update(f"  Found {len(links_to_download)} potential file links on this page.")
+
+            if not links_to_download:
+                self.log_and_update("  No direct links found on the page.")
 
             for i, link_url in enumerate(links_to_download):
-                self.update_results(f"  Attempting download from link {i+1}: {link_url}\n")
+                self.log_and_update(f"  Attempting download from link {i+1}: {link_url}")
                 if self.download_file(link_url, diagram_dir):
                     if single_file:
                         return True
@@ -897,13 +990,14 @@ class ComEtCrawler:
             return False
             
         except Exception as e:
-            self.update_results(f"  Error downloading from current page: {str(e)}\n")
+            self.log_and_update(f"  Error downloading from current page: {str(e)}")
             return False
 
     def download_file_with_selenium(self, driver, directory):
         """Download file using Selenium, deriving the filename from the URL."""
         try:
             current_url = driver.current_url
+            self.log_and_update(f"    Downloading file from current URL: {current_url}")
             
             # Get filename from URL
             parsed_url = urlparse(current_url)
@@ -911,6 +1005,7 @@ class ComEtCrawler:
             
             # If filename is empty or invalid, create one
             if not filename or '.' not in filename:
+                self.log_and_update("    Filename from URL is invalid, generating new one.")
                 if '.pdf' in current_url.lower():
                     ext = '.pdf'
                 elif any(img_ext in current_url.lower() for img_ext in ['.jpg', '.jpeg']):
@@ -927,11 +1022,11 @@ class ComEtCrawler:
             filepath = os.path.join(directory, filename)
             
             if os.path.exists(filepath):
+                self.log_and_update("    File already exists, renaming to avoid overwrite.")
                 name, ext = os.path.splitext(filename)
                 filename = f"{name}_{int(time.time())}{ext}"
                 filepath = os.path.join(directory, filename)
 
-            # Use asynchronous fetch in JS, which is more reliable
             js_code = """
             const callback = arguments[arguments.length - 1];
             const url = arguments[0];
@@ -946,12 +1041,11 @@ class ComEtCrawler:
                 .catch(error => callback({error: error.message}));
             """
             
-            # Use execute_async_script for promise-based JS
             driver.set_script_timeout(30)
             result = driver.execute_async_script(js_code, current_url)
             
             if isinstance(result, dict) and 'error' in result:
-                self.update_results(f"    Selenium download via JS failed: {result['error']}\n")
+                self.log_and_update(f"    Selenium download via JS failed: {result['error']}")
                 return None
 
             file_content = bytes(result)
@@ -959,43 +1053,46 @@ class ComEtCrawler:
                 f.write(file_content)
             
             if os.path.exists(filepath) and os.path.getsize(filepath) > 0:
-                self.update_results(f"    Successfully downloaded via Selenium: {filename}\n")
+                self.log_and_update(f"    Successfully downloaded via Selenium: {filename} ({os.path.getsize(filepath)} bytes)")
                 return filename
             else:
-                self.update_results(f"    Selenium download failed - file is empty\n")
+                self.log_and_update(f"    Selenium download failed - file is empty or missing")
                 if os.path.exists(filepath): os.remove(filepath)
                 return None
                 
         except Exception as e:
-            self.update_results(f"    Error in Selenium download: {str(e)}\n")
+            self.log_and_update(f"    Error in Selenium download: {str(e)}")
             return None
 
     def extract_specifications(self, driver, specs_link, specs_href, product_id):
         """Extract specifications table and convert to Rakuten HTML format"""
+        self.log_and_update("  Starting specifications extraction process.")
         original_window = driver.current_window_handle
         try:
             # Click the specifications link
             try:
                 if specs_link is not None:
+                    self.log_and_update("    Clicking on specs link element.")
                     driver.execute_script("arguments[0].scrollIntoView(true);", specs_link)
                     time.sleep(1)
                     specs_link.click()
                     time.sleep(3)
                 elif specs_href:
+                    self.log_and_update(f"    Navigating to specs URL: {specs_href}")
                     driver.get(specs_href)
                     time.sleep(3)
                 else:
-                    self.update_results("    No specifications link or URL available\n")
+                    self.log_and_update("    No specifications link or URL available. Skipping.")
                     return None
             except Exception as e:
-                self.update_results(f"    Error clicking specs link: {str(e)}\n")
+                self.log_and_update(f"    Error clicking specs link: {str(e)}")
                 return None
             
             # Check if a new window/tab opened
             if len(driver.window_handles) > 1:
                 new_window = [h for h in driver.window_handles if h != original_window][0]
                 driver.switch_to.window(new_window)
-                self.update_results("    Switched to new window for specifications\n")
+                self.log_and_update("    Switched to new window for specifications.")
             
             time.sleep(2)
             
@@ -1004,39 +1101,46 @@ class ComEtCrawler:
             
             for selector in table_selectors:
                 try:
+                    self.log_and_update(f"    Attempting to find table with selector: {selector}")
                     tables = driver.find_elements(By.CSS_SELECTOR, selector)
+                    if not tables:
+                        self.log_and_update(f"    No tables found with selector: {selector}")
+                        continue
+                    
                     for table in tables:
                         if any(k in table.text for k in ['基本情報', '仕様', '質量', '発売時期']):
                             specs_table = table
+                            self.log_and_update(f"    Found specifications table with keyword match.")
                             break
                     if specs_table:
                         break
-                except:
-                    continue
+                except Exception as e:
+                    self.log_and_update(f"    Error finding table with selector {selector}: {str(e)}")
             
             if not specs_table:
-                self.update_results(f"    No specifications table found\n")
-                # Return to original window
+                self.log_and_update(f"    No specifications table found on the page.")
                 if len(driver.window_handles) > 1 and driver.current_window_handle != original_window:
+                    self.log_and_update("    Closing new window and returning to original.")
                     driver.close()
                     driver.switch_to.window(original_window)
                 return None
             
             table_data = self.extract_table_data(specs_table)
+            self.log_and_update(f"    Extracted {len(table_data)} rows of table data.")
             rakuten_html = self.generate_rakuten_html(table_data, product_id)
             
-            # Return to original window
             if len(driver.window_handles) > 1 and driver.current_window_handle != original_window:
+                self.log_and_update("    Closing new window and returning to original.")
                 driver.close()
                 driver.switch_to.window(original_window)
             
             return rakuten_html
             
         except Exception as e:
-            self.update_results(f"    Error extracting specifications: {str(e)}\n")
-            # Ensure we return to original window even if there's an error
+            self.log_and_update(f"    Error extracting specifications: {str(e)}")
             try:
                 if len(driver.window_handles) > 1 and driver.current_window_handle != original_window:
+                    self.log_and_update("    Error occurred, but attempting to close new window and return to original.")
                     driver.close()
                     driver.switch_to.window(original_window)
             except:
@@ -1045,22 +1149,22 @@ class ComEtCrawler:
 
     def extract_table_data(self, table_element):
         """Extract data from specifications table with 3-column structure"""
+        self.log_and_update("      Extracting table data...")
         table_data = []
         try:
             rows = table_element.find_elements(By.TAG_NAME, "tr")
             current_section = ""
-            for row in rows:
+            for i, row in enumerate(rows):
                 try:
                     headers = row.find_elements(By.TAG_NAME, "th")
                     cells = row.find_elements(By.TAG_NAME, "td")
                     
-                    # Check if this is a section header (header with no cells or header with colspan)
                     if headers and len(cells) == 0:
                         current_section = headers[0].text.strip()
+                        self.log_and_update(f"      - Found new section header: {current_section}")
                     elif headers and cells:
                         item_name = headers[0].text.strip()
                         
-                        # Handle 3-column structure: item_name | primary_value | secondary_value
                         if len(cells) >= 1:
                             primary_value = cells[0].text.strip()
                             secondary_value = cells[1].text.strip() if len(cells) > 1 else ""
@@ -1072,15 +1176,17 @@ class ComEtCrawler:
                                     'primary_value': primary_value,
                                     'secondary_value': secondary_value
                                 })
+                                self.log_and_update(f"      - Extracted row: {item_name} | {primary_value} | {secondary_value}")
                 except Exception as e:
-                    self.update_results(f"    Error processing table row: {str(e)}\n")
+                    self.log_and_update(f"      - Error processing table row {i}: {str(e)}")
                     continue
         except Exception as e:
-            self.update_results(f"    Error extracting table data: {str(e)}\n")
+            self.log_and_update(f"      - Error extracting table data: {str(e)}")
         return table_data
 
     def generate_rakuten_html(self, table_data, product_id):
         """Generate HTML for Rakuten EC site based on specifications data with 3-column structure"""
+        self.log_and_update("      Generating Rakuten HTML...")
         try:
             html_content = f"""<!DOCTYPE html>
 <html>
@@ -1118,10 +1224,6 @@ class ComEtCrawler:
                         html_content += "        </table>\n"
                     html_content += f"        <div class=\"section-title\">{section}</div>\n"
                     html_content += "        <table>\n"
-                    html_content += "            <tr class=\"table-header\">\n"
-                    html_content += "                <th>項目</th>\n"
-                    html_content += "                <th>仕様</th>\n"
-                    html_content += "                <th>備考</th>\n"
                     html_content += "            </tr>\n"
                     last_section = section
                 
@@ -1146,42 +1248,45 @@ class ComEtCrawler:
     </div>
 </body>
 </html>"""
+            self.log_and_update("      Rakuten HTML generated successfully.")
             return html_content
         except Exception as e:
-            self.update_results(f"    Error generating Rakuten HTML: {str(e)}\n")
+            self.log_and_update(f"      Error generating Rakuten HTML: {str(e)}")
             return None
 
     def download_direct_link(self, diagram, product_id):
         """Download a diagram from a direct link"""
         try:
-            self.update_results(f"Downloading direct link: {diagram['text']}\n")
+            self.log_and_update(f"  Downloading direct link: {diagram['text']}")
             
             # Create directory structure
             product_dir = os.path.join(self.output_dir, product_id)
             diagram_dir = os.path.join(product_dir, config.DIAGRAM_FOLDER_NAME)
             
             os.makedirs(diagram_dir, exist_ok=True)
+            self.log_and_update(f"  Ensured diagram directory exists: {diagram_dir}")
             
             # Download the file
             filename = self.download_file(diagram['url'], diagram_dir)
             if filename:
-                self.update_results(f"  Downloaded: {filename}\n")
+                self.log_and_update(f"  Downloaded: {filename}")
                 return True
             else:
-                self.update_results(f"  Failed to download: {diagram['url']}\n")
+                self.log_and_update(f"  Failed to download: {diagram['url']}")
                 return False
                 
         except Exception as e:
-            self.update_results(f"  Error downloading direct link: {str(e)}\n")
+            self.log_and_update(f"  Error downloading direct link: {str(e)}")
             return False
 
     def process_product_page(self, driver, product, product_id):
         try:
-            self.update_results(f"Processing product page: {product['text']}\n")
+            self.log_and_update(f"Processing product page: {product['text']}")
             
             # Navigate to product page
             driver.get(product['url'])
             time.sleep(config.PAGE_LOAD_TIMEOUT)
+            self.log_and_update("  Navigated to product page and waited for load.")
             
             # Get page source
             page_source = driver.page_source
@@ -1220,7 +1325,7 @@ class ComEtCrawler:
                         })
             
             if not diagram_links:
-                self.update_results(f"  No diagrams found for {product['text']}\n")
+                self.log_and_update(f"  No diagrams found for {product['text']}")
                 return False
             
             # Create directory structure
@@ -1233,22 +1338,23 @@ class ComEtCrawler:
             downloaded = False
             for diagram in diagram_links:
                 try:
+                    self.log_and_update(f"  Attempting to download diagram from product page: {diagram['url']}")
                     filename = self.download_file(diagram['url'], diagram_dir)
                     if filename:
-                        self.update_results(f"  Downloaded: {filename}\n")
+                        self.log_and_update(f"  Downloaded: {filename}")
                         downloaded = True
                 except Exception as e:
-                    self.update_results(f"  Failed to download {diagram['url']}: {str(e)}\n")
+                    self.log_and_update(f"  Failed to download {diagram['url']}: {str(e)}")
             
             return downloaded
             
         except Exception as e:
-            self.update_results(f"  Error processing page: {str(e)}\n")
+            self.log_and_update(f"  Error processing page: {str(e)}")
             return False
     
     def download_file(self, url, directory):
         try:
-            self.update_results(f"    Downloading from URL: {url}\n")
+            self.log_and_update(f"    Starting file download for URL: {url}")
             
             # Get filename from URL
             parsed_url = urlparse(url)
@@ -1256,16 +1362,15 @@ class ComEtCrawler:
             
             # Clean up filename
             if filename:
-                # Remove query parameters
                 filename = filename.split('?')[0]
-                # Remove any invalid characters
                 filename = "".join(c for c in filename if c.isalnum() or c in "._-")
             
             if not filename or '.' not in filename:
-                # Generate filename based on content type
+                self.log_and_update("    Filename from URL is invalid, generating one based on content type.")
                 try:
                     headers = self.get_browser_headers()
                     response = requests.head(url, headers=headers, timeout=config.DOWNLOAD_TIMEOUT)
+                    response.raise_for_status()
                     content_type = response.headers.get('content-type', '')
                     
                     if 'pdf' in content_type:
@@ -1280,26 +1385,26 @@ class ComEtCrawler:
                             ext = 'jpg'
                         filename = f"image_{int(time.time())}.{ext}"
                     else:
-                        filename = f"file_{int(time.time())}.dat" # Fallback
-                except:
+                        filename = f"file_{int(time.time())}.dat"
+                except Exception as e:
+                    self.log_and_update(f"    Failed to get content type for filename generation: {str(e)}")
                     filename = f"file_{int(time.time())}.dat"
             
             filepath = os.path.join(directory, filename)
             
-            # Check if file already exists
             if os.path.exists(filepath):
+                self.log_and_update("    File already exists, appending timestamp to filename.")
                 name, ext = os.path.splitext(filename)
                 filename = f"{name}_{int(time.time())}{ext}"
                 filepath = os.path.join(directory, filename)
             
-            # Download file with browser headers
             headers = self.get_browser_headers()
             response = requests.get(url, headers=headers, timeout=config.DOWNLOAD_TIMEOUT, stream=True)
             response.raise_for_status()
             
             content_type = response.headers.get('content-type', '')
             if 'text/html' in content_type:
-                self.update_results("    Warning: Link leads to an HTML page, not a direct file. Skipping direct download.\n")
+                self.log_and_update("    Warning: Link leads to an HTML page, not a direct file. Skipping direct download.")
                 return None
                 
             with open(filepath, 'wb') as f:
@@ -1307,14 +1412,14 @@ class ComEtCrawler:
                     f.write(chunk)
             
             if os.path.exists(filepath) and os.path.getsize(filepath) > 0:
-                self.update_results(f"    Successfully downloaded: {filename} ({os.path.getsize(filepath)} bytes)\n")
+                self.log_and_update(f"    Successfully downloaded: {filename} ({os.path.getsize(filepath)} bytes)")
                 return filename
             else:
-                self.update_results(f"    File download failed - file is empty or missing\n")
+                self.log_and_update(f"    File download failed - file is empty or missing")
                 return None
             
         except Exception as e:
-            self.update_results(f"    Download failed: {str(e)}\n")
+            self.log_and_update(f"    Download failed: {str(e)}")
             return None
 
     def get_browser_headers(self):
@@ -1341,18 +1446,18 @@ class ComEtCrawler:
             href = image_info['href']
             alt_text = image_info['alt']
             
-            self.update_results(f"    Downloading image for {alt_text}: {href}\n")
+            self.log_and_update(f"    Downloading image for {alt_text}: {href}")
             
             # Direct download from the href link
             if self.download_file(href, diagram_dir):
-                self.update_results(f"    Successfully downloaded image for {alt_text}\n")
+                self.log_and_update(f"    Successfully downloaded image for {alt_text}")
                 return True
             else:
-                self.update_results(f"    Failed to download image for {alt_text}\n")
+                self.log_and_update(f"    Failed to download image for {alt_text}")
                 return False
                 
         except Exception as e:
-            self.update_results(f"    Error downloading image: {str(e)}\n")
+            self.log_and_update(f"    Error downloading image: {str(e)}")
             return False
     
     def update_status(self, message):
