@@ -1,0 +1,57 @@
+$(function(){
+/*--------------------------------------------------------------*/
+	var mainSliderLen = $('#eyecatch .viewArea .slides li').length;
+	var mainSlider = $('#eyecatch .viewArea .slides').bxSlider({
+		auto: true,
+		pause: 8000,
+		controls: false
+	});
+	if (mainSliderLen > 3) {
+		var subSlider = $('#eyecatch .thumArea .slides').bxSlider({
+			auto: true,
+			pause: 8000,
+			mode: 'vertical',
+			pager: false,
+			minSlides: 3,
+			moveSlides: 1
+		});
+	}
+	$(document).on('click', '#eyecatch .thumArea .slides a', function(event) {
+		event.preventDefault();
+		mainSlider.goToSlide($(this).data('slide-index'))
+	});
+	/*$('#eyecatch .thumArea .slides a').on('click', function(){
+		mainSlider.goToSlide($(this).data('slide-index'))
+	});*/
+
+	//新着情報の文字数
+	$('.news ul a').each(function(){
+		var txt = $(this).text();
+		if (txt.length > 43) {
+			txt = txt.replace(/(^.{0,43}).*/,'$1');
+			 $(this).text(txt + '…');
+		};
+	})
+
+	//重要なお知らせの文字数
+	$('.important ul a').each(function(){
+		var txt = $(this).text();
+		if (txt.length > 56) {
+			txt = txt.replace(/(^.{0,56}).*/,'$1');
+			 $(this).text(txt + '…');
+		};
+	})
+
+	//コラム・マガジン・ギャラリーの4番目
+	$('.mailMagazine .btn01,.mailMagazine .btn02').on('mouseenter',function(){
+		$('.mailMagazine img').css({
+			opacity: .7
+		})
+	}).on('mouseleave', function(){
+		$('.mailMagazine img').css({
+			opacity: 1
+		})
+	})
+
+/*--------------------------------------------------------------*/
+});

@@ -1,0 +1,357 @@
+$(function () {
+var promotion = {},
+promoWrapper = $('<div class=\"promotion\">\<div class=\"promotion_inner\">\<div class=\"promotion_cates\">\<div class=\"promotion_cate promotion_cate-isOpen\" data-promo=\"recommend\">\<p class=\"promotion_btn promotion_btn-01\"><a href=\"javascript: void(0);\">おすすめ情報</a></p>\<div class=\"promotion_body\">\<p class=\"promotion_cateLoad\"><img src=\"https://www.com-et.com//img/default/indicator.gif\"></p>\<p class=\"promotion_cateClose\"><a href=\"javascript: void(0);\">閉じる</a></p>\<div class=\"promotion_contents promotion_contents-dummy\">\<div class=\"promotion_contentsInner\"></div>\</div>\</div>\</div>\<div class=\"promotion_cate promotion_cate-isOpen\" data-promo=\"pickup\">\<p class=\"promotion_btn promotion_btn-02\"><a href=\"javascript: void(0);\">ピックアップ</a></p>\<div class=\"promotion_body\">\<p class=\"promotion_cateLoad\"><img src=\"https://www.com-et.com//img/default/indicator.gif\"></p>\<p class=\"promotion_cateClose\"><a href=\"javascript: void(0);\">閉じる</a></p>\<h2 class=\"promotion_title promotion_title-pickup\">ピックアップ</h2>\<div class=\"promotion_contents js-scrollBox\">\<div class=\"promotion_contentsInner\"></div>\</div>\</div>\</div>\<div class=\"promotion_cate promotion_cate-isOpen\" data-promo=\"catalog\">\<p class=\"promotion_btn promotion_btn-03\"><a href=\"javascript: void(0);\">新着カタログ</a></p>\<div class=\"promotion_body\">\<p class=\"promotion_cateLoad\"><img src=\"https://www.com-et.com//img/default/indicator.gif\"></p>\<p class=\"promotion_cateClose\"><a href=\"javascript: void(0);\">閉じる</a></p>\<h2 class=\"promotion_title promotion_title-catalog\">新着カタログ</h2>\<div class=\"promotion_contents js-scrollBox\">\<div class=\"promotion_contentsInner\"></div>\</div>\</div>\</div>\<div class=\"promotion_cate promotion_cate-isOpen\" data-promo=\"seminar\">\<p class=\"promotion_btn promotion_btn-04\"><a href=\"javascript: void(0);\">セミナー受付</a></p>\<div class=\"promotion_body\">\<p class=\"promotion_cateLoad\"><img src=\"https://www.com-et.com//img/default/indicator.gif\"></p>\<p class=\"promotion_cateClose\"><a href=\"javascript: void(0);\">閉じる</a></p>\<h2 class=\"promotion_title promotion_title-seminar\">受付中セミナー</h2>\<div class=\"promotion_contents js-scrollBox\">\<div class=\"promotion_contentsInner\"></div>\</div>\</div>\</div>\<div class=\"promotion_cate promotion_cate-isOpen\" data-promo=\"example\">\<p class=\"promotion_btn promotion_btn-05\"><a href=\"javascript: void(0);\">新着事例</a></p>\<div class=\"promotion_body\">\<p class=\"promotion_cateLoad\"><img src=\"https://www.com-et.com//img/default/indicator.gif\"></p>\<p class=\"promotion_cateClose\"><a href=\"javascript: void(0);\">閉じる</a></p>\<h2 class=\"promotion_title promotion_title-example\">新着事例</h2>\<div class=\"promotion_contents js-scrollBox\">\<div class=\"promotion_contentsInner\"></div>\</div>\</div>\</div>\</div>\<p class=\"promotion_close\"><a href=\"javascript: void(0);\">閉じる</a></p>\</div>\</div>').hide().appendTo('body'),
+base_url = 'https://www.com-et.com/jp'.replace('http:', ''),
+catalog_url = 'https://order.toto.jp/com-et/catalogue/period/list.api?fromRenewalDatetimeDifference=-1&toRenewalDatetimeDifference=1&limit=4',
+promotions = {
+pickup: false,
+seminar: false,
+example: false,
+catalog: false,
+recommend: false
+},
+recommend_loader = [];
+
+promotion.enable = function (name) {
+if (promotions.hasOwnProperty(name)) {
+promotions[name] = true;
+}
+};
+
+// レコメンドの初期化処理
+promotion.registerRecommendLoader = function (func) {
+recommend_loader.push(func);
+};
+
+// 枠作成
+promotion.init = function () {
+var enables = $.grep(Object.keys(promotions), function (x) {
+return promotions[x];
+}),
+promises = $.map(enables, function (x) {
+return promotion[x].load();
+}),
+onPromisesCompleted = function () {
+if (promoWrapper.find('.promotion_cate.promotion_enabled').length > 0) {
+promoWrapper.show();
+promotion.close();
+$('.promotion').css({
+visibility: 'visible'
+});
+}
+};
+promoWrapper.find('.promotion_cate').hide();
+
+// 全ての非同期処理が完了してからプロモーションエリアの表示を行う
+$.when.apply($, promises).done(onPromisesCompleted).fail(onPromisesCompleted);
+};
+
+promotion.showOrHide = function () {
+if (promoWrapper.find('.promotion_cate.promotion_enabled').length > 0) {
+promoWrapper.show();
+promotion.close();
+$('.promotion').css({
+visibility: 'visible'
+});
+} else {
+promoWrapper.hide();
+}
+};
+
+promotion.recommend = {
+html: '',
+load: function () {
+var deferred = $.Deferred(),
+promises = [],
+onCompleted = function () {
+deferred.resolve();
+};
+if (recommend_loader.length > 0) {
+$.each(recommend_loader, function () {
+var d = $.Deferred();
+this(d);
+promises.push(d);
+});
+$.when.apply($, promises).done(onCompleted).fail(onCompleted);
+} else {
+deferred.resolve();
+}
+return deferred.promise();
+}
+};
+promotion.pickup = {
+html: '',
+load: function () {
+return $.getJSON(base_url + '/api_pickup', {}, function (json) {
+// See lazurite/etc/templates/sources/promotion/pickup.html
+var base = $('<div class=\"promoPickup\">\<ul class=\"promoPickup_list\">\<li class=\"promoPickup_item\" data-mh=\"promoPickup_item\">\<a href=\"\">\<p class=\"promoPickup_title\"></p>\<p class=\"prpmpPickup_bnr\"><img src=\"\" alt=\"\"></p>\</a>\</li>\</li>\</ul>\</div>'),
+list = base.find(".promoPickup_list"),
+item_base = base.find(".promoPickup_item").clone();
+base.find(".promoPickup_item").remove();
+$.each(json, function () {
+var item = item_base.clone(),
+link = item.find("a");
+item.find(".promoPickup_title").html(this.title);
+item.find(".prpmpPickup_bnr img").attr({
+src: this.image_url,
+alt: this.title
+});
+if (this.link_url.length > 0) {
+link.attr({
+id: "PR_ピックアップ_" + this.title,
+href: this.link_url,
+target: this.link_target
+});
+} else {
+// リンクを span に書き換える
+link.replaceWith('<span>' + link.html() + '</span>');
+}
+item.appendTo(list);
+});
+promotion.pickup.html = base.html();
+if (Object.keys(json).length === 0) {
+$(".promotion_cate[data-promo=pickup]").hide();
+} else {
+$(".promotion_cate[data-promo=pickup]", promoWrapper).show().addClass('promotion_enabled');
+}
+})
+.fail(function () {
+$(".promotion_cate[data-promo=pickup]").hide();
+});
+}
+};
+promotion.catalog = {
+html: '',
+load: function () {
+return $.getJSON(catalog_url, {}, function (json) {
+if (json.status_code != '200-00' || json.data.count == 0) {
+$(".promotion_cate[data-promo=catalog]").hide();
+} else {
+// See lazurite/etc/templates/sources/promotion/catalog.html
+var base = $('<div class=\"promoCatalog\">\<ul class=\"promoCatalog_list\">\<li class=\"promoCatalog_item\">\<a href=\"\" class=\"promoCatalog_box\" data-mh=\"promoCatalog_box\" target=\"_blank\">\<p class=\"promoCatalog_name\"></p>\<figure class=\"promoCatalog_img\"><img src=\"\" alt=\"\"></figure>\<div class=\"promoCatalog_txts\">\<p class=\"promoCatalog_description\"></p>\<p class=\"promoCatalog_date\"></p>\</div>\</a>\</li>\</ul>\<p class=\"promoCatalog_listBtn\"><a href=\"\" class=\"btn\" id=\"PR_新着カタログ_一覧\" target=\"_blank\"><span class=\"arrow\">カタログ請求・一覧へ</span></a></p>\<p class=\"promoCatalog_note\"></p>\</div>'),
+list = base.find(".promoCatalog_list"),
+item_base = base.find(".promoCatalog_item").clone(),
+note = base.find(".promoCatalog_note");
+base.find(".promoCatalog_item").remove();
+$.each(json.data.list, function () {
+var item = item_base.clone();
+item.find(".promoCatalog_box").attr({
+href: this.catalogueUrl,
+id: "PR_新着カタログ_" + this.catalogueNumber + "_" + this.catalogueName
+});
+item.find(".promoCatalog_name").html(this.catalogueName);
+item.find(".promoCatalog_img > img").attr({
+src: this.thumbnailUrl,
+alt: this.catalogueNumber
+});
+item.find(".promoCatalog_description").html(this.catalogueDescription);
+item.find(".promoCatalog_date").html(this.catalogueRenewal);
+item.appendTo(list);
+});
+if (json.data.catalogueHiddenCount <= 0) {
+note.hide();
+} else {
+note.html('（その他、' + json.data.catalogueHiddenCount + '件あり）');
+}
+base.find(".promoCatalog_listBtn > a").attr("href", json.data.catalogueListUrl);
+promotion.catalog.html = base.html();
+$(".promotion_cate[data-promo=catalog]", promoWrapper).show().addClass('promotion_enabled');
+}
+})
+.fail(function () {
+$(".promotion_cate[data-promo=catalog]").hide();
+});
+}
+};
+promotion.seminar = {
+html: '',
+load: function () {
+return $.getJSON(base_url + '/api_seminar', {}, function (json) {
+// See lazurite/etc/templates/sources/promotion/seminar.html
+var base = $('<div class=\"promoSeminar\">\<div class=\"promoSeminar_listFrame\">\<ul class=\"promoSeminar_list\">\<li class=\"promoSeminar_item\">\<p class=\"promoSeminar_place\"><img src=\"\" alt=\"\"></p>\<p class=\"promoSeminar_date\"></p>\<p class=\"promoSeminar_time\"></p>\<p class=\"promoSeminar_title\"></p>\</li>\</ul>\</div>\<p class=\"promoSeminar_btn\"><a href=\"/jp/ttc_event-seminar/\" class=\"btn\" id=\"PR_受付中セミナー_一覧\"><span class=\"arrow\">セミナー情報へ</span></a></p>\<p class=\"promoSeminar_note\"></p>\<div class=\"promoSeminar_cpd\">\<p class=\"promoSeminar_cpdTitle\">CPDとは</p>\<p class=\"promoSeminar_cpdTxt\">技術者が継続的に技術、技能を向上させるための研修。<br>建築業界でも日本建築家協会や日本建築士連合会など各団体が積極活用を行っている。<br>CPD認定のプログラムを受講することで単位を得られ、単位を積み重ねることで継続的に能力開発を行っていると評価される。公共工事のプロポーザル方式、総合評価方式において、CPD実績を判断基準として管理技術者、担当技術者等の評価が行われるようになってきている。</p>\</div>\</div>'),
+list = base.find(".promoSeminar_list"),
+item_base = base.find(".promoSeminar_item").clone(),
+note = base.find(".promoSeminar_note");
+base.find(".promoSeminar_item").remove();
+$.each(json.list, function () {
+var item = item_base.clone();
+item.find(".promoSeminar_place > img").attr({
+src: this.place_icon,
+alt: this.place_name
+});
+item.find(".promoSeminar_date").html(this.schedule);
+item.find(".promoSeminar_time").html(this.hold_time);
+item.find(".promoSeminar_title").html(this.title);
+item.appendTo(list);
+});
+if (json.count <= 0) {
+note.hide();
+} else {
+note.html('（その他、' + json.count + '件あり）');
+}
+promotion.seminar.html = base.html();
+if (Object.keys(json.list).length === 0) {
+$(".promotion_cate[data-promo=seminar]").hide();
+} else {
+$(".promotion_cate[data-promo=seminar]", promoWrapper).show().addClass('promotion_enabled');
+}
+})
+.fail(function () {
+$(".promotion_cate[data-promo=seminar]").hide();
+return true;
+});
+}
+};
+promotion.example = {
+html: '',
+load: function () {
+return $.getJSON(base_url + '/api_construct', {}, function (json) {
+// See lazurite/etc/templates/sources/promotion/construct.html
+var base = $('<div class=\"promoExample\">\<ul class=\"promoExample_list\">\<li class=\"promoExample_item\">\<a href=\"\">\<figure class=\"promoExample_img\"><img src=\"\" alt=\"\"></figure>\<div class=\"promoExample_body\">\<p class=\"promoExample_label\"></p>\<p class=\"promoExample_date\"></p>\<p class=\"promoExample_title\"></p>\</div>\</a>\</li>\</ul>\<p class=\"promoExample_btn\"><a href=\"\" class=\"btn\" id=\"PR_新着事例_一覧\"><span class=\"arrow\">事例へ</span></a></p>\<p class=\"promoExample_note\"></p>\</div>'),
+list = base.find(".promoExample_list"),
+item_base = base.find(".promoExample_item").clone(),
+note = base.find(".promoExample_note");
+base.find(".promoExample_item").remove();
+$.each(json.list, function () {
+var item = item_base.clone();
+item.find(".promoExample_img > img").attr({
+src: this.thumbnail_url,
+alt: this.title
+});
+item.find("a").attr({
+href: this.link_url,
+id: "PR_新着事例_" + this.title
+});
+item.find(".promoExample_label").html(this.category);
+item.find(".promoExample_date").html(this.release_date + 'リリース');
+item.find(".promoExample_title").html(this.title);
+item.appendTo(list);
+});
+if (json.count <= 0) {
+note.hide();
+} else {
+note.html('（その他、' + json.count + '件あり）');
+}
+base.find('.promoExample_btn > a').attr("href", json.list_url);
+promotion.example.html = base.html();
+if (Object.keys(json.list).length === 0) {
+$(".promotion_cate[data-promo=example]").hide();
+} else {
+$(".promotion_cate[data-promo=example]", promoWrapper).show().addClass('promotion_enabled');
+}
+})
+.fail(function () {
+$(".promotion_cate[data-promo=example]").hide();
+});
+}
+};
+
+promotion.open = function () {
+var $root = $(this).closest('.promotion_cate');
+promotion.close();
+
+$root.addClass('promotion_cate-isOpen');
+//おすすめ情報なら
+if ($root.data('promo') === 'recommend') {
+$root.find('.promotion_cateLoad').hide();
+$root.find('.js-scrollBox').perfectScrollbar({
+useBothWheelAxes: 'vertical'
+});
+}
+
+//中身が無ければ
+if (!$root.find('.promotion_contentsInner').children()[0]) {
+//html作成して挿入
+$root.find('.promotion_contentsInner').append(promotion[$root.data('promo')].html);
+
+//画像がある場合は読み込んでから高さ合わせてから表示
+if ($root.find('.promotion_contentsInner img')[0]) {
+$root.find('.promotion_contentsInner img').on('load', function (event) {
+event.preventDefault();
+$root.find('[data-mh]').matchHeight();
+$root.find('.promotion_cateLoad').hide();
+$root.find('.promotion_contentsInner').fadeIn(400, function () {
+$root.find('.js-scrollBox').perfectScrollbar({
+useBothWheelAxes: 'vertical'
+});
+});
+});
+} else {
+$root.find('.promotion_cateLoad').hide();
+$root.find('.promotion_contentsInner').fadeIn(400, function () {
+$root.find('.js-scrollBox').perfectScrollbar({
+useBothWheelAxes: 'vertical'
+});
+});
+}
+}
+};
+
+promotion.close = function () {
+$('.promotion_cate').removeClass('promotion_cate-isOpen');
+};
+
+promotion.toggle = function(){
+var $root = $(this).closest('.promotion_cate');
+promotion.close();
+if (!$root.hasClass('promotion_cate-isOpen')) {
+promotion.open.call(this)
+};
+}
+
+promotion.show = function () {
+$('.promotion').delay(1000).animate({
+right: 0
+}, 200);
+};
+
+promotion.hide = function () {
+$('.promotion').animate({
+right: -80
+}, 200, function () {
+$('.promotion').hide();
+})
+};
+
+/*******************************************************************
+* 実行
+*******************************************************************/
+
+// {{{ php
+promotion.enable('pickup');
+promotion.enable('seminar');
+promotion.enable('example');
+promotion.enable('catalog');
+// }}} php
+$(window).on('load', function() {
+promotion.show();
+});
+
+$(document).on({
+'mouseenter': function () {
+promotion.open.call(this);
+},
+'mouseleave': function () {
+promotion.close.call(this);
+}
+}, '.promotion_cate');
+
+$(document).on('click', '.promotion_btn > a', function(event) {
+event.preventDefault();
+promotion.toggle.call(this);
+});
+
+
+$(document).on('click', '.promotion_cateClose > a', function (event) {
+event.preventDefault();
+promotion.close.call(this);
+});
+$(document).on('click', '.promotion_close > a', function (event) {
+event.preventDefault();
+promotion.hide();
+});
+
+// export
+window.promotion = promotion;
+
+});

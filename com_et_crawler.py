@@ -247,89 +247,26 @@ class ComEtCrawler:
                 
                 self.update_status("Looking for search bar...")
                 
-                # Try to find search input field with better detection
+                # Use the specific CSS selector provided by the user
+                search_selector = "div.searchArea.incSearchOptions input#searchBox"
                 search_input = None
-                search_selectors = config.SEARCH_INPUT_PATTERNS
                 
-                # First try the configured selectors
-                for selector in search_selectors:
-                    try:
-                        search_input = WebDriverWait(driver, 5).until(
-                            EC.presence_of_element_located((By.CSS_SELECTOR, selector))
-                        )
-                        if search_input and search_input.is_displayed() and search_input.is_enabled():
-                            break
-                    except:
-                        continue
-                
-                # If no search input found, try to find any visible input field
-                if not search_input:
-                    try:
-                        inputs = driver.find_elements(By.TAG_NAME, "input")
-                        for inp in inputs:
-                            if (inp.get_attribute("type") in ["text", "search"] and 
-                                inp.is_displayed() and inp.is_enabled()):
-                                search_input = inp
-                                break
-                    except:
-                        pass
-                
-                # If still no search input, try to find by placeholder or name
-                if not search_input:
-                    try:
-                        search_input = driver.find_element(By.CSS_SELECTOR, "input[placeholder*='検索'], input[name*='search'], input[id*='search']")
-                    except:
-                        pass
-                
-                if not search_input:
-                    # Last resort: try to find any input that might be a search box
-                    try:
-                        all_inputs = driver.find_elements(By.TAG_NAME, "input")
-                        for inp in all_inputs:
-                            if inp.is_displayed() and inp.is_enabled():
-                                placeholder = inp.get_attribute("placeholder") or ""
-                                name = inp.get_attribute("name") or ""
-                                id_attr = inp.get_attribute("id") or ""
-                                
-                                if any(keyword in (placeholder + name + id_attr).lower() for keyword in ['search', '検索', 'q', 'query']):
-                                    search_input = inp
-                                    break
-                    except:
-                        pass
-                
-                if not search_input:
-                    # Try one more approach: look for any form with a text input
-                    try:
-                        forms = driver.find_elements(By.TAG_NAME, "form")
-                        for form in forms:
-                            inputs = form.find_elements(By.TAG_NAME, "input")
-                            for inp in inputs:
-                                if inp.get_attribute("type") in ["text", "search"] and inp.is_displayed():
-                                    search_input = inp
-                                    break
-                            if search_input:
-                                break
-                    except:
-                        pass
-                
-                if not search_input:
-                    raise Exception("Could not find search input field. Please check if the website structure has changed.")
-                
-                # Additional verification that the element is ready
                 try:
-                    # Wait for element to be present and visible
-                    WebDriverWait(driver, 10).until(
-                        EC.visibility_of(search_input)
+                    search_input = WebDriverWait(driver, 10).until(
+                        EC.presence_of_element_located((By.CSS_SELECTOR, search_selector))
                     )
-                except:
-                    self.update_status("Warning: Search input may not be fully ready")
+                except Exception as e:
+                    raise Exception(f"Could not find search input field with selector '{search_selector}': {str(e)}")
+                
+                if not (search_input and search_input.is_displayed() and search_input.is_enabled()):
+                    raise Exception("Search input field is not visible or enabled.")
                 
                 self.update_status(f"Entering product ID: {product_id}")
                 
                 # Wait for element to be interactable
                 try:
                     WebDriverWait(driver, 10).until(
-                        EC.element_to_be_clickable((By.CSS_SELECTOR, search_input.tag_name + "[value='" + search_input.get_attribute("value") + "']"))
+                        EC.element_to_be_clickable((By.CSS_SELECTOR, search_selector))
                     )
                 except:
                     # If that fails, try a simpler approach
@@ -438,6 +375,7 @@ class ComEtCrawler:
                 
                 # Look for product containers with various selectors
                 container_selectors = [
+                    "table.productTable tr",  # Main product table rows
                     ".product",
                     ".item", 
                     ".result",
@@ -454,9 +392,21 @@ class ComEtCrawler:
                     try:
                         containers = driver.find_elements(By.CSS_SELECTOR, selector)
                         if containers:
-                            product_containers = containers
-                            self.update_status(f"Found {len(containers)} product containers using selector: {selector}")
-                            break
+                            # Filter out header rows and empty rows
+                            filtered_containers = []
+                            for container in containers:
+                                try:
+                                    container_text = container.text
+                                    # Only include rows that have product information
+                                    if any(keyword in container_text for keyword in ['品番', '商品名', '商品図', 'Product']):
+                                        filtered_containers.append(container)
+                                except:
+                                    continue
+                            
+                            if filtered_containers:
+                                product_containers = filtered_containers
+                                self.update_status(f"Found {len(filtered_containers)} product containers using selector: {selector}")
+                                break
                     except:
                         continue
                 
@@ -538,8 +488,15 @@ class ComEtCrawler:
                     self.progress_var.set((i / len(products_data)) * 100)
                     
                     try:
+                        # Ensure we're on the search results page before processing each product
+                        self.ensure_on_search_results_page(driver)
+                        
+                        self.update_results(f"Starting processing for product {i+1}/{len(products_data)}: {product['product_id']}\n")
                         if self.process_product_diagrams(driver, product):
                             downloaded_count += 1
+                            self.update_results(f"Successfully completed processing for {product['product_id']}\n")
+                        else:
+                            self.update_results(f"No downloads completed for {product['product_id']}\n")
                     except Exception as e:
                         self.update_results(f"Error processing {product['product_id']}: {str(e)}\n")
                 
@@ -557,38 +514,62 @@ class ComEtCrawler:
             self.is_searching = False
             self.search_button.config(state='normal')
     
+    def ensure_on_search_results_page(self, driver):
+        """Ensure we're on the search results page before processing products."""
+        try:
+            current_url = driver.current_url
+            # Check if we're on a search results page
+            if "item_search" not in current_url and "search" not in current_url:
+                self.update_results("    Not on search results page, attempting to return...\n")
+                # Try to go back to the search results
+                driver.back()
+                time.sleep(2)
+                
+                # If still not on search results, try to navigate to the original search URL
+                if "item_search" not in driver.current_url:
+                    self.update_results("    Attempting to return to search results page...\n")
+                    # You might need to store the original search URL and navigate back to it
+                    # For now, we'll just log the issue
+                    self.update_results(f"    Current URL: {driver.current_url}\n")
+        except Exception as e:
+            self.update_results(f"    Error ensuring on search results page: {str(e)}\n")
+
     def extract_product_info(self, container, driver):
         """
         Extract product information from a container element,
         prioritizing diagram links that precisely match the product_id.
         """
         try:
-            # Get container text
-            container_text = container.text
-            
-            # Extract product ID (品番)
             product_id = None
-            import re
-            product_id_match = re.search(r'◆([A-Z0-9]+)', container_text)
-            if product_id_match:
-                product_id = product_id_match.group(1)
-            
-            # Extract product name (商品名)
             product_name = "Unknown Product"
-            lines = container_text.split('\n')
-            for line in lines:
-                if '商品名' in line or 'Product' in line:
-                    product_name = line.strip()
-                    break
-            
-            if not product_id:
-                return None
-            
             diagram_link = None
             specs_link = None
             product_images = [] 
             diagram_href = None
             specs_href = None
+            
+            # Find the '品番' (product ID) link
+            try:
+                # Find the dt with '品番' text
+                hinban_dt = container.find_element(By.XPATH, ".//dt[contains(text(), '品番')]")
+                # Find the sibling dd element
+                hinban_dd = hinban_dt.find_element(By.XPATH, "./following-sibling::dd")
+                # Find the link within the dd element
+                product_id_link = hinban_dd.find_element(By.TAG_NAME, "a")
+                product_id = product_id_link.text.strip()
+            except Exception as e:
+                self.update_results(f"Error finding 品番 link: {str(e)}\n")
+                return None
+            
+            # Find the '商品名' (product name)
+            try:
+                product_name_dd = container.find_element(By.XPATH, ".//dt[contains(text(), '商品名')]/following-sibling::dd")
+                product_name = product_name_dd.text.strip()
+            except:
+                pass
+            
+            if not product_id:
+                return None
             
             all_links_in_container = container.find_elements(By.TAG_NAME, "a")
             
@@ -625,20 +606,73 @@ class ComEtCrawler:
                             diagram_href = href
 
             # --- Specifications Link Selection Logic ---
-            for link in all_links_in_container:
+            # Look for 仕様一覧 links in the productLabels section
+            specs_links = container.find_elements(By.CSS_SELECTOR, "ul.productLabels a")
+            
+            # If no specs links found in current container, try to find them in the parent tr
+            if not specs_links:
+                try:
+                    # If we're in a td element, look in the entire tr
+                    if container.tag_name == "td":
+                        parent_tr = container.find_element(By.XPATH, "./..")
+                        specs_links = parent_tr.find_elements(By.CSS_SELECTOR, "ul.productLabels a")
+                    # If we're in a th element, look in the sibling td
+                    elif container.tag_name == "th":
+                        parent_tr = container.find_element(By.XPATH, "./..")
+                        td_element = parent_tr.find_element(By.TAG_NAME, "td")
+                        specs_links = td_element.find_elements(By.CSS_SELECTOR, "ul.productLabels a")
+                except:
+                    pass
+            
+            for link in specs_links:
                 href = link.get_attribute('href')
                 link_text = link.text.strip()
-                if '仕様一覧' in link_text:
-                    specs_link = link
-                    specs_href = href
-                    break # Found the specs link, break
+                if '仕様一覧' in link_text and href:
+                    # Verify this specs link is for the current product
+                    if product_id in href or f"hinban={product_id}" in href:
+                        specs_link = link
+                        specs_href = href
+                        break
 
             # --- Product Images Selection Logic ---
-            # Find product images with the specific prefix. 
-            # If images for other 品番 exist, but have different prefixes, this selector might miss them.
-            images = container.find_elements(By.CSS_SELECTOR, "img[src^='https://search.toto.jp/img/']")
-            for img in images:
-                product_images.append(img)
+            # Find product images by looking for anchor tags with href to search.toto.jp/img/
+            # and categorize them by the alt attribute which contains the product ID
+            product_images = []
+            
+            # First, try to find images in the current container (th element)
+            image_links = container.find_elements(By.CSS_SELECTOR, "a[href*='search.toto.jp/img/']")
+            
+            # If no images found in current container, try to find the corresponding th element
+            if not image_links:
+                try:
+                    # If we're in a td element, find the corresponding th element in the same tr
+                    if container.tag_name == "td":
+                        parent_tr = container.find_element(By.XPATH, "./..")
+                        th_element = parent_tr.find_element(By.TAG_NAME, "th")
+                        image_links = th_element.find_elements(By.CSS_SELECTOR, "a[href*='search.toto.jp/img/']")
+                    # If we're in a th element, we already have the images
+                    elif container.tag_name == "th":
+                        image_links = container.find_elements(By.CSS_SELECTOR, "a[href*='search.toto.jp/img/']")
+                except:
+                    pass
+            
+            for link in image_links:
+                try:
+                    href = link.get_attribute('href')
+                    alt_text = link.get_attribute('alt') or ""
+                    
+                    # Check if this image belongs to the current product
+                    if product_id in alt_text or alt_text == product_id:
+                        # Create a dictionary to store image info
+                        image_info = {
+                            'href': href,
+                            'alt': alt_text,
+                            'element': link
+                        }
+                        product_images.append(image_info)
+                except Exception as e:
+                    self.update_results(f"Error processing image link: {str(e)}\n")
+                    continue
             
             return {
                 'product_id': product_id,
@@ -649,7 +683,7 @@ class ComEtCrawler:
                 'specs_link': specs_link,
                 'specs_href': specs_href,
                 'product_images': product_images, # List of images to download
-                'container_text': container_text
+                'container_text': container.text # Use container.text to get all text
             }
             
         except Exception as e:
@@ -697,6 +731,9 @@ class ComEtCrawler:
         downloaded_something = False
         
         try:
+            # Store the original window handle to ensure we return to the search results page
+            original_window = driver.current_window_handle
+            
             # Create directory for this product
             product_dir = os.path.join(self.output_dir, product['product_id'])
             diagram_dir = os.path.join(product_dir, config.DIAGRAM_FOLDER_NAME)
@@ -706,13 +743,13 @@ class ComEtCrawler:
             if product.get('product_images'):
                 self.update_results(f"Image: Attempting to download {min(2, len(product['product_images']))} images for {product['product_id']}...\n")
                 downloaded_image_count = 0
-                for img_el in product['product_images']:
+                for image_info in product['product_images']:
                     if downloaded_image_count >= 2:
                         self.update_results("  Reached maximum of 2 product images, skipping further images.\n")
                         break
                     
                     try:
-                        if self.download_product_image(driver, img_el, diagram_dir):
+                        if self.download_product_image(driver, image_info, diagram_dir):
                             downloaded_something = True
                             downloaded_image_count += 1
                     except Exception as e:
@@ -720,7 +757,7 @@ class ComEtCrawler:
             else:
                 self.update_results(f"  No product images found for {product['product_id']} with the current selector.\n")
 
-            # 2. Process 商品図 (Product Diagram) - NO CHANGES TO THIS FUNCTIONALITY
+            # 2. Process 商品図 (Product Diagram)
             if product.get('diagram_link') or product.get('diagram_href'):
                 try:
                     self.update_results(f"Diagram (商品図): Attempting to download for {product['product_id']}...\n")
@@ -747,10 +784,29 @@ class ComEtCrawler:
             else:
                 self.update_results(f"  No 仕様一覧 link found for {product['product_id']}.\n")
             
+            # Ensure we return to the original window (search results page)
+            try:
+                if driver.current_window_handle != original_window:
+                    driver.switch_to.window(original_window)
+            except:
+                # If original window is closed, try to switch to any available window
+                try:
+                    available_windows = driver.window_handles
+                    if available_windows:
+                        driver.switch_to.window(available_windows[0])
+                except:
+                    pass
+            
             return downloaded_something
                 
         except Exception as e:
             self.update_results(f"  Error processing product: {str(e)}\n")
+            # Try to return to original window even if there's an error
+            try:
+                if driver.current_window_handle != original_window:
+                    driver.switch_to.window(original_window)
+            except:
+                pass
             return False
 
     def handle_diagram_download(self, driver, product, diagram_dir):
@@ -777,12 +833,14 @@ class ComEtCrawler:
                 time.sleep(1)
                 
                 current_window = driver.current_window_handle
+                existing_handles = set(driver.window_handles)
                 link_element.click()
                 time.sleep(3) # Wait for action to complete
 
                 # Check if a new tab was opened
-                if len(driver.window_handles) > 1:
-                    new_window = [h for h in driver.window_handles if h != current_window][0]
+                new_handles = set(driver.window_handles) - existing_handles
+                if new_handles:
+                    new_window = list(new_handles)[0]
                     driver.switch_to.window(new_window)
                     self.update_results("  New tab detected for diagram.\n")
                     if self.download_from_current_page(driver, diagram_dir, pdf_only=True, single_file=True):
@@ -796,6 +854,12 @@ class ComEtCrawler:
                         downloaded = True
             except Exception as e:
                 self.update_results(f"  Clicking diagram link failed: {e}\n")
+                # Try to return to original window if there's an error
+                try:
+                    if driver.current_window_handle != current_window:
+                        driver.switch_to.window(current_window)
+                except:
+                    pass
         
         return downloaded
 
@@ -908,6 +972,7 @@ class ComEtCrawler:
 
     def extract_specifications(self, driver, specs_link, specs_href, product_id):
         """Extract specifications table and convert to Rakuten HTML format"""
+        original_window = driver.current_window_handle
         try:
             # Click the specifications link
             try:
@@ -926,10 +991,11 @@ class ComEtCrawler:
                 self.update_results(f"    Error clicking specs link: {str(e)}\n")
                 return None
             
-            current_window = driver.current_window_handle
+            # Check if a new window/tab opened
             if len(driver.window_handles) > 1:
-                new_window = [h for h in driver.window_handles if h != current_window][0]
+                new_window = [h for h in driver.window_handles if h != original_window][0]
                 driver.switch_to.window(new_window)
+                self.update_results("    Switched to new window for specifications\n")
             
             time.sleep(2)
             
@@ -950,32 +1016,35 @@ class ComEtCrawler:
             
             if not specs_table:
                 self.update_results(f"    No specifications table found\n")
-                if len(driver.window_handles) > 1:
+                # Return to original window
+                if len(driver.window_handles) > 1 and driver.current_window_handle != original_window:
                     driver.close()
-                    driver.switch_to.window(current_window)
+                    driver.switch_to.window(original_window)
                 return None
             
             table_data = self.extract_table_data(specs_table)
             rakuten_html = self.generate_rakuten_html(table_data, product_id)
             
-            if len(driver.window_handles) > 1:
+            # Return to original window
+            if len(driver.window_handles) > 1 and driver.current_window_handle != original_window:
                 driver.close()
-                driver.switch_to.window(current_window)
+                driver.switch_to.window(original_window)
             
             return rakuten_html
             
         except Exception as e:
             self.update_results(f"    Error extracting specifications: {str(e)}\n")
+            # Ensure we return to original window even if there's an error
             try:
-                if len(driver.window_handles) > 1:
+                if len(driver.window_handles) > 1 and driver.current_window_handle != original_window:
                     driver.close()
-                    driver.switch_to.window(current_window)
+                    driver.switch_to.window(original_window)
             except:
                 pass
             return None
 
     def extract_table_data(self, table_element):
-        """Extract data from specifications table"""
+        """Extract data from specifications table with 3-column structure"""
         table_data = []
         try:
             rows = table_element.find_elements(By.TAG_NAME, "tr")
@@ -984,21 +1053,34 @@ class ComEtCrawler:
                 try:
                     headers = row.find_elements(By.TAG_NAME, "th")
                     cells = row.find_elements(By.TAG_NAME, "td")
+                    
+                    # Check if this is a section header (header with no cells or header with colspan)
                     if headers and len(cells) == 0:
                         current_section = headers[0].text.strip()
                     elif headers and cells:
                         item_name = headers[0].text.strip()
-                        item_value = cells[0].text.strip()
-                        if item_name and item_value:
-                            table_data.append({'section': current_section, 'item': item_name, 'value': item_value})
-                except:
+                        
+                        # Handle 3-column structure: item_name | primary_value | secondary_value
+                        if len(cells) >= 1:
+                            primary_value = cells[0].text.strip()
+                            secondary_value = cells[1].text.strip() if len(cells) > 1 else ""
+                            
+                            if item_name and (primary_value or secondary_value):
+                                table_data.append({
+                                    'section': current_section, 
+                                    'item': item_name, 
+                                    'primary_value': primary_value,
+                                    'secondary_value': secondary_value
+                                })
+                except Exception as e:
+                    self.update_results(f"    Error processing table row: {str(e)}\n")
                     continue
         except Exception as e:
             self.update_results(f"    Error extracting table data: {str(e)}\n")
         return table_data
 
     def generate_rakuten_html(self, table_data, product_id):
-        """Generate HTML for Rakuten EC site based on specifications data"""
+        """Generate HTML for Rakuten EC site based on specifications data with 3-column structure"""
         try:
             html_content = f"""<!DOCTYPE html>
 <html>
@@ -1007,14 +1089,17 @@ class ComEtCrawler:
     <title>{product_id} - 商品仕様</title>
     <style>
         body {{ font-family: Arial, sans-serif; margin: 20px; background-color: #f5f5f5; }}
-        .container {{ max-width: 800px; margin: 0 auto; background-color: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
+        .container {{ max-width: 1000px; margin: 0 auto; background-color: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
         h1 {{ color: #333; text-align: center; border-bottom: 2px solid #007bff; padding-bottom: 10px; }}
-        .section-title {{ background-color: #007bff; color: white; padding: 10px; font-weight: bold; border-radius: 4px; margin-top: 20px; }}
+        .section-title {{ background-color: #333; color: white; padding: 10px; font-weight: bold; border-radius: 4px; margin-top: 20px; }}
         table {{ width: 100%; border-collapse: collapse; margin: 10px 0; }}
         th, td {{ border: 1px solid #ddd; padding: 12px; text-align: left; }}
-        th {{ background-color: #f8f9fa; font-weight: bold; width: 30%; }}
+        th {{ background-color: #f8f9fa; font-weight: bold; width: 25%; }}
+        td.primary {{ background-color: #f8f9fa; width: 35%; }}
+        td.secondary {{ background-color: #f8f9fa; width: 40%; }}
         .product-info {{ background-color: #e9ecef; padding: 15px; border-radius: 4px; margin-bottom: 20px; }}
         .product-id {{ font-size: 18px; font-weight: bold; color: #007bff; }}
+        .table-header {{ background-color: #333; color: white; font-weight: bold; }}
     </style>
 </head>
 <body>
@@ -1031,12 +1116,28 @@ class ComEtCrawler:
                 if section != last_section:
                     if last_section is not None:
                         html_content += "        </table>\n"
-                    html_content += f"        <div class=\"section-title\">{section}</div>\n        <table>\n"
+                    html_content += f"        <div class=\"section-title\">{section}</div>\n"
+                    html_content += "        <table>\n"
+                    html_content += "            <tr class=\"table-header\">\n"
+                    html_content += "                <th>項目</th>\n"
+                    html_content += "                <th>仕様</th>\n"
+                    html_content += "                <th>備考</th>\n"
+                    html_content += "            </tr>\n"
                     last_section = section
                 
                 item_name = item['item'].replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-                item_value = item['value'].replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-                html_content += f"            <tr><th>{item_name}</th><td>{item_value}</td></tr>\n"
+                primary_value = item['primary_value'].replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                secondary_value = item['secondary_value'].replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                
+                # Use dash for empty secondary values
+                if not secondary_value or secondary_value == "":
+                    secondary_value = "-"
+                
+                html_content += f"            <tr>\n"
+                html_content += f"                <th>{item_name}</th>\n"
+                html_content += f"                <td class=\"primary\">{primary_value}</td>\n"
+                html_content += f"                <td class=\"secondary\">{secondary_value}</td>\n"
+                html_content += f"            </tr>\n"
 
             if last_section is not None:
                 html_content += "        </table>\n"
@@ -1234,74 +1335,24 @@ class ComEtCrawler:
             'Referer': 'https://www.com-et.com/jp/'
         }
 
-    def download_product_image(self, driver, image_element, diagram_dir):
-        """Click a thumbnail, then find and download the full-size image."""
+    def download_product_image(self, driver, image_info, diagram_dir):
+        """Download a product image from the href link."""
         try:
-            original_src = image_element.get_attribute('src')
-            driver.execute_script("arguments[0].scrollIntoView(true);", image_element)
-            time.sleep(1)
-            current_window = driver.current_window_handle
-            existing_handles = set(driver.window_handles)
-
-            # Click the thumbnail to trigger the large image view
-            try:
-                image_element.click()
-                time.sleep(2) # Wait for lightbox or new tab
-            except Exception as e:
-                self.update_results(f"    Could not click product image: {e}\n")
+            href = image_info['href']
+            alt_text = image_info['alt']
+            
+            self.update_results(f"    Downloading image for {alt_text}: {href}\n")
+            
+            # Direct download from the href link
+            if self.download_file(href, diagram_dir):
+                self.update_results(f"    Successfully downloaded image for {alt_text}\n")
+                return True
+            else:
+                self.update_results(f"    Failed to download image for {alt_text}\n")
                 return False
-
-            # Case 1: A new tab opened with the large image.
-            new_handles = set(driver.window_handles) - existing_handles
-            if new_handles:
-                self.update_results("    New tab detected, switching to download large image...\n")
-                new_window = list(new_handles)[0]
-                driver.switch_to.window(new_window)
-                time.sleep(1)
-                filename = self.download_file_with_selenium(driver, diagram_dir)
-                driver.close()
-                driver.switch_to.window(current_window)
-                return filename is not None
-
-            # Case 2: The click caused a lightbox/overlay to appear on the same page.
-            try:
-                self.update_results("    No new tab; searching for a lightbox image on the current page...\n")
-                time.sleep(1) # Extra wait for lightbox to render
-                all_images_on_page = driver.find_elements(By.TAG_NAME, "img")
                 
-                best_image_src = None
-                max_area = 0
-
-                for img in all_images_on_page:
-                    if not img.is_displayed():
-                        continue
-                    
-                    img_src = img.get_attribute('src')
-                    if img_src == original_src:
-                        continue
-                        
-                    try:
-                        width = driver.execute_script("return arguments[0].naturalWidth;", img)
-                        height = driver.execute_script("return arguments[0].naturalHeight; ", img)
-                        area = width * height
-                        
-                        if area > max_area:
-                            max_area = area
-                            best_image_src = img_src
-                    except Exception:
-                        continue
-                
-                if best_image_src:
-                    self.update_results(f"    Found large image in lightbox: {best_image_src}\n")
-                    if self.download_file(best_image_src, diagram_dir):
-                        return True
-            except Exception as e:
-                self.update_results(f"    Error while searching for lightbox image: {e}\n")
-
-            self.update_results("    Could not find a larger image after clicking. Download failed.\n")
-            return False
         except Exception as e:
-            self.update_results(f"    An unexpected error occurred in download_product_image: {e}\n")
+            self.update_results(f"    Error downloading image: {str(e)}\n")
             return False
     
     def update_status(self, message):
