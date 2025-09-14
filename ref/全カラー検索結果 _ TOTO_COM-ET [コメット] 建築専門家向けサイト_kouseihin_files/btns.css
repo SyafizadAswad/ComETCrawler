@@ -1,0 +1,237 @@
+@charset "utf-8";
+/**********************************************
+TOTO コメット
+ボタン　CSS
+***********************************************/
+.btn {
+	display: inline-block;
+	vertical-align: top;
+	background: #1152B2;
+	color: #FFF;
+	text-align: center;
+	padding: 0 13px;
+	height: 38px;
+	line-height: 38px;
+	cursor: pointer;
+	border: none;
+	outline: none;
+	-webkit-box-sizing: content-box;
+	-moz-box-sizing: content-box;
+	box-sizing: content-box;
+	width: 224px;
+}
+.btn:hover {
+	background: #5986C9;
+	text-decoration: none;
+}
+.btn.md-noPointer {
+	cursor: default;
+}
+.btn.md-noPointer:hover {
+	background: #1152B2;
+}
+
+/**** ボタン色 ****/
+.btn.md-color02 {
+	background: #555;
+}
+.btn.md-color02:hover {
+	background: #888;
+}
+.btn.md-color02.active {
+	background: #fff;
+	color: #222;
+}
+
+.btn.md-color03,
+.btn.md-color03:hover {
+	background: #fff;
+	color: #222;
+}
+.btn.md-color04 {
+	background: #5f789d;
+	color: #fff;
+}
+.btn.md-color04:hover {
+	background: #8fa1bb;
+}
+.btn.md-color05 {
+	background: #0083c0;
+	color: #fff;
+}
+.btn.md-color05:hover {
+	background: #4da8d3;
+}
+
+.btn.md-color06 {
+	background: #eee;
+	color: #222;
+}
+.btn.md-color06:hover {
+	background: #f3f3f3;
+}
+
+
+/**** ボタン幅 ****/
+.btn.md-long {
+	width: 374px;
+}
+.btn.md-short {
+	width: 158px;
+}
+.btn.md-auto {
+	width: auto;
+}
+.btn.md-100p {
+	display: block;
+	width: auto;
+}
+/**** ボタン高さ ****/
+.btn.md-big {
+	height: 50px;
+	line-height: 50px;
+	font-size: 133.33%;
+	font-weight: bold;
+}
+
+/**** ボタン矢印 ****/
+.btn .arrow {
+	background: url(../../img/default/icon/arrow04.png) 0 center no-repeat;
+	padding-left: 13px;
+	display:inline-block;
+	*display:inline;
+	*zoom:1;
+	vertical-align: top;
+	text-align: left;
+}
+.btn .arrow.md-left {
+	background: url(../../img/default/icon/arrow04_left.png) 0 center no-repeat;
+}
+.btn .arrow.md-color02 {
+	background: url(../../img/default/icon/arrow02.png) 0 center no-repeat;
+	padding: 0 0 0 13px;
+}
+.btn.active .arrow.md-color02 {
+	background: url(../../img/default/icon/arrow06.png) 0 center no-repeat;
+	padding: 0 0 0 13px;
+}
+.btn .arrow.md-big {
+	background: url(../../img/default/icon/arrow03.png) 0 center no-repeat;
+	padding-left: 20px;
+}
+.btn .arrow.md-bigLeft {
+	background: url(../../img/default/icon/arrow03_left.png) 0 center no-repeat;
+	padding-left: 20px;
+}
+/**** ボタン アイコン ****/
+.btn .check {
+	background: url(../../img/default/icon/icon_check.png) 0 center no-repeat;
+	padding-left: 25px;
+	display:inline-block;
+	*display:inline;
+	*zoom:1;
+	vertical-align: top;
+	text-align: left;
+}
+.btn .plus {
+	background: url(../../img/default/icon/icon_plus.png) 0 center no-repeat;
+	padding-left: 22px;
+	display:inline-block;
+	*display:inline;
+	*zoom:1;
+	vertical-align: top;
+	text-align: left;
+}
+.btn .minus {
+	background: url(../../img/default/icon/icon_minus.png) 0 center no-repeat;
+	padding-left: 32px;
+	display:inline-block;
+	*display:inline;
+	*zoom:1;
+	vertical-align: top;
+	text-align: left;
+}
+
+.btn[href$=".pdf"] .arrow:after,
+.btn[href*=".pdf?"] .arrow:after,
+.btn .afterPdf:after {
+	content: 'pdf';
+	display:inline-block;
+	*display:inline;
+	*zoom:1;
+	vertical-align: middle;
+	margin: 0 0 5px 5px;
+	background: url(../../img/default/icon/icon_pdf.gif) 0 0 no-repeat;
+	width: 14px;
+	height: 17px;
+	text-indent: -9999px;
+}
+.btn .pdf {
+	background: url(../../img/default/icon/icon_pdf.gif) 0 center no-repeat;
+	display:inline-block;
+	*display:inline;
+	*zoom:1;
+	vertical-align: top;
+	text-align: left;
+	padding-left: 20px;
+}
+.btn.md-key span:after {
+	content: '会員限定';
+	display:inline-block;
+	*display:inline;
+	*zoom:1;
+	vertical-align: middle;
+	text-indent: -9999px;
+	background: url(../../img/default/icon/icon_key.png) 0 0 no-repeat;
+	width: 16px;
+	height: 17px;
+	margin: 0 0 3px 9px;
+}
+.btn.md-keyBig span:after {
+	content: '会員限定';
+	display:inline-block;
+	*display:inline;
+	*zoom:1;
+	vertical-align: middle;
+	text-indent: -9999px;
+	background: url(../../img/default/icon/icon_key_big.png) 0 0 no-repeat;
+	width: 20px;
+	height: 21px;
+	margin: 0 0 6px 9px;
+}
+.btn.md-check span:before {
+	content: '済み';
+	display:inline-block;
+	*display:inline;
+	*zoom:1;
+	vertical-align: middle;
+	text-indent: -9999px;
+	background: url(../../img/default/icon/icon_check.png) 0 0 no-repeat;
+	width: 17px;
+	height: 17px;
+	margin: 0 8px 3px 0;
+}
+.btn.md-book span:after {
+	content: 'カタログ';
+	display:inline-block;
+	*display:inline;
+	*zoom:1;
+	vertical-align: middle;
+	text-indent: -9999px;
+	background: url(../../img/default/icon/icon_book.png) 0 0 no-repeat;
+	width: 18px;
+	height: 12px;
+	margin: 0 0 3px 3px;
+}
+.btn.md-window span:after {
+	content: 'オンライン';
+	display:inline-block;
+	*display:inline;
+	*zoom:1;
+	vertical-align: middle;
+	text-indent: -9999px;
+	background: url(../../img/default/icon/icon_window.png) 0 0 no-repeat;
+	width: 17px;
+	height: 13px;
+	margin: 0 0 3px 5px;
+}

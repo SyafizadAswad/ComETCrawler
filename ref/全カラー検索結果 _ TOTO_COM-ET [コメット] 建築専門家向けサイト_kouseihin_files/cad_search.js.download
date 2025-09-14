@@ -1,0 +1,160 @@
+$(function(){
+/*--------------------------------------------------------------*/
+var arr = vw.public.cadCategory || [],
+		path = vw.public.cadCategoryPath || [];
+
+		$(function(){
+			//elem
+			var $categorys		= $('.cadSearchBox_categorys'),	//大本
+				$position		= $('.cadSearchBox_position'),	//カテゴリーのパンクズ
+				$up 			= $('.cadSearchBox_positionUp'),//上の階層に戻る
+				$bigCategory	= $('.bigCategory',$categorys),	//大カテゴリー
+				$inCategory		= $(' > ul',$categorys);		//小カテゴリー
+				$categoryInput = $('#input-category');
+				$categoryForm = $('#form-cad-category-search');
+
+			//params
+			var arrStack	= [],
+				levelStack	= [],
+				state		= 0,
+				initialized = false,
+				className	= "hasChild"; //先頭に付与されるクラス名
+
+			//init
+			var init = function(){
+				//reset
+				$up.hide();
+				$inCategory.hide();
+				$('li:not(:first)', $position).remove();
+				arrStack.length = 0;
+				levelStack.length = 0;
+				state = 0;
+
+				//set big category
+				var bigCategory_html = "<ul>";
+				for(var i=0; i<arr.length; i++){
+					bigCategory_html += '<li><a href="javascript:;" id="list-' + arr[i].id + '">' + arr[i].name + '</a></li>';
+					var ii = i+1;
+					if(ii%4 == 0 || ii == arr.length){bigCategory_html += "</ul>";}
+					if(ii%4 == 0 && ii < arr.length){bigCategory_html += "<ul>";}
+				}
+				$bigCategory.html(bigCategory_html).show();
+			};
+			init();
+
+			//dig
+			$categorys.on('click','a',function(){
+				//generate next level
+				var index = 0,
+					tmpArr = arr,
+					tmpHtml = "",
+					which = 0;
+
+				if($(this).closest(".bigCategory").size() > 0){
+					which = 0;
+					index = $("a",$bigCategory).index(this);
+					tmpArr = arr[index];
+				}else {
+					which = 1;
+					tmpArr = arr[levelStack[0]];
+					index = $("a",$inCategory).index(this);
+					for(var i=1; i<levelStack.length; i++){
+						tmpArr = tmpArr["child"][levelStack[i]];
+					}
+					tmpArr = tmpArr["child"][index];
+				}
+
+				//check exist child
+				if(typeof tmpArr["child"] != "undefined" && tmpArr["child"].length > 0){
+					$position.append('<li><a href="javascript:;" id="pos-' + this.id.split('-')[1] + '">' + $(this).text() + '</a></li>');
+					for(var i=0; i<tmpArr["child"].length; i++){
+						tmpHtml += '<li><a href="javascript:;" id="list-' + tmpArr["child"][i].id + '">' + tmpArr["child"][i].name + '</a></li>';
+					}
+
+					if(which == 0){
+						$bigCategory.hide();
+						$up.show();
+					}
+					$inCategory.html(tmpHtml).show();
+
+					//save state and position
+					levelStack[levelStack.length] = index;
+					arrStack[arrStack.length] = tmpArr["child"];
+					state += 1;
+				}else {
+					levelStack[levelStack.length] = index;
+					arrStack[arrStack.length] = tmpArr["child"];
+					state += 1;
+					$position.append('<li><a href="javascript:;" id="pos-' + this.id.split('-')[1] + '">' + $(this).text() + '</a></li>');
+					$inCategory.hide();
+					if (initialized) {
+						$(".cadSearchBox_btnSearch > input").click();
+					}
+				}
+				$('li',$position).removeClass(className);
+				$('li:not(:last-child)',$position).addClass(className);
+			});
+
+			//up
+			$up.on("click",function(){
+				state -= 1;
+				/*
+				 * 矢印マークを表示するための実装が
+				 * 「パンくず最下層のカテゴリには矢印マーク用のクラスを付与しない」というものになっているため
+				 * 単純に最下層のカテゴリを削除するだけだと、矢印マークが残ってしまう。
+				 * これを回避するため、最下層のカテゴリを削除した後、改めて最下層以外のカテゴリ以外に
+				 * 矢印マーク用のクラスが付与されるようにしている。
+				 */
+				$('li:last-child',$position).remove();
+				$('li',$position).removeClass(className);
+				$('li:not(:last-child),li:first',$position).addClass(className);
+
+				if(state == 0){
+					init();
+				}else {
+					var tmpHtml = "";
+					for(var i=0; i<arrStack[state-1].length; i++){
+						tmpHtml += '<li><a href="javascript:;" id="list-' + arrStack[state-1][i].id + '">' + arrStack[state-1][i].name + '</a></li>';
+					}
+					$inCategory.html(tmpHtml).show();
+				}
+				levelStack.length = levelStack.length-1;
+				arrStack.length = arrStack.length-1;
+			});
+
+			//topicpath
+			$position.on('click','a',function(){
+				var index = $('a',$position).index(this);
+				if(index == 0){
+					init();
+				}else {
+					var tmpArr = arr[levelStack[0]];
+					for(var i=1; i<index; i++){
+						//console.log(levelStack[i]);
+						tmpArr = tmpArr["child"][levelStack[i]];
+					}
+
+					var tmpHtml = "";
+					for(var i=0; i<tmpArr["child"].length; i++){
+						tmpHtml += '<li><a href="javascript:;" id="list-' + tmpArr["child"][i].id + '">' + tmpArr["child"][i].name + '</a></li>';
+					}
+
+					$inCategory.html(tmpHtml).show();
+
+					//save state and position
+					$('li:gt('+index+')',$position).remove();
+					levelStack.length = index;
+					arrStack.length = index;
+					state = index;
+				}
+			});
+			$categoryForm.submit(function(){
+				$categoryInput.val($('li:last-child',$position).children('a').get(0).id.split('-')[1]);
+			});
+			$.each(path, function(k, v){
+				$('#list-' + v.id, $categorys).click();
+			});
+			initialized = true;
+		});
+	/*--------------------------------------------------------------*/
+});

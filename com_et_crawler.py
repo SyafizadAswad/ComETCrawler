@@ -819,6 +819,20 @@ class ComEtCrawler:
                 self.log_and_update("  Product name not found.")
                 pass
             
+            # Find the 'シリーズ名' (series name)
+            series_name = "Unknown Series"
+            try:
+                self.log_and_update("  Attempting to find シリーズ名...")
+                series_name_dd = container.find_element(By.XPATH, ".//dt[contains(text(), 'シリーズ名')]/following-sibling::dd")
+                series_name = series_name_dd.text.strip()
+                # Remove the colon and any leading whitespace
+                if series_name.startswith('：'):
+                    series_name = series_name[1:].strip()
+                self.log_and_update(f"  Found series name: {series_name}")
+            except:
+                self.log_and_update("  Series name not found.")
+                pass
+            
             if not product_id:
                 self.log_and_update("  Product ID is empty, skipping this container.")
                 return None
@@ -937,6 +951,22 @@ class ComEtCrawler:
             except Exception as e:
                 self.log_and_update(f"    Error finding 分解図 link: {str(e)}")
             
+            # --- 構成品 (Components) Link Selection Logic ---
+            self.log_and_update("  Searching for 構成品 link...")
+            component_link = None
+            component_href = None
+            try:
+                component_candidates = container.find_elements(By.XPATH, ".//a[contains(., '構成品')]")
+                for link in component_candidates:
+                    href = link.get_attribute('href')
+                    if href and "item_view_set" in href:
+                        component_link = link
+                        component_href = href
+                        self.log_and_update(f"    Found 構成品 link: {component_href}")
+                        break
+            except Exception as e:
+                self.log_and_update(f"    Error finding 構成品 link: {str(e)}")
+            
             # --- Product Images Selection Logic ---
             self.log_and_update("  Searching for product images...")
             product_images = []
@@ -979,6 +1009,7 @@ class ComEtCrawler:
             return {
                 'product_id': product_id,
                 'product_name': product_name,
+                'series_name': series_name,
                 'container': container,
                 'diagram_link': diagram_link,
                 'diagram_href': diagram_href,
@@ -986,6 +1017,8 @@ class ComEtCrawler:
                 'bunkaizu_href': bunkaizu_href,
                 'specs_link': specs_link,
                 'specs_href': specs_href,
+                'component_link': component_link,
+                'component_href': component_href,
                 'product_images': product_images, # List of images to download
                 'container_text': container.text # Use container.text to get all text
             }
@@ -1092,19 +1125,41 @@ class ComEtCrawler:
                 except Exception as e:
                     self.log_and_update(f"  Error downloading 分解図: {str(e)}")
             
-            # 3. Process 仕様一覧 (Specifications)
+            # 3. Process 構成品 (Components)
+            components_data = None
+            self.log_and_update(f"  Checking for component data for {product['product_id']}...")
+            self.log_and_update(f"    component_link: {product.get('component_link')}")
+            self.log_and_update(f"    component_href: {product.get('component_href')}")
+            
+            if product.get('component_link') or product.get('component_href'):
+                try:
+                    self.log_and_update(f"  Components (構成品): Attempting to process for {product['product_id']}...")
+                    components_data = self.extract_component_data(driver, product.get('component_link'), product.get('component_href'), product['product_id'])
+                    if components_data:
+                        self.log_and_update(f"  Found {len(components_data)} components for {product['product_id']}")
+                        for i, comp in enumerate(components_data):
+                            self.log_and_update(f"    Component {i+1}: {comp['component_id']} - {comp['component_name']}")
+                    else:
+                        self.log_and_update("  No components found for this product.")
+                except Exception as e:
+                    self.log_and_update(f"  Error processing components: {str(e)}")
+            else:
+                self.log_and_update("  No component link or href found for this product.")
+            
+            # 4. Process 仕様一覧 (Specifications)
             if product.get('specs_link') or product.get('specs_href'):
                 try:
                     self.log_and_update(f"  Specifications (仕様一覧): Attempting to process for {product['product_id']}...")
                     specs_data = self.extract_specifications_data(driver, product.get('specs_link'), product.get('specs_href'), product['product_id'])
                     if specs_data:
-                        # Generate template HTML with the extracted specifications data
+                        # Generate template HTML with the extracted specifications data and components
                         template_html = self.generate_template_html(
-                            specs_data, 
+                            specs_data,
                             product['product_id'], 
                             product.get('product_name', ''), 
                             self.extract_manufacturer_from_product_id(product['product_id']),
-                            self.extract_series_from_product_name(product.get('product_name', ''))
+                            product.get('series_name', ''),
+                            components_data
                         )
                         if template_html:
                             specs_file = os.path.join(product_dir, f"{product['product_id']}_template.html")
@@ -1394,23 +1449,386 @@ class ComEtCrawler:
             self.log_and_update(f"    Error in Selenium download: {str(e)}")
             return None
 
+    def extract_component_data(self, driver, component_link, component_href, product_id):
+        """Extract component data from the component page and return as structured data"""
+        self.log_and_update("  Starting component data extraction process.")
+        try:
+            # Navigate to component page using URL directly to avoid stale element issues
+            if component_href:
+                self.log_and_update(f"  Navigating to component page: {component_href}")
+                driver.get(component_href)
+            elif component_link is not None:
+                # Get the href from the element before it becomes stale
+                try:
+                    href = component_link.get_attribute('href')
+                    if href:
+                        self.log_and_update(f"  Navigating to component page from element: {href}")
+                        driver.get(href)
+                    else:
+                        self.log_and_update("  No href found on component link element.")
+                        return None
+                except Exception as e:
+                    self.log_and_update(f"  Error getting href from component link: {str(e)}")
+                    return None
+            else:
+                self.log_and_update("  No component URL provided, skipping component extraction.")
+                return None
+            
+            # Wait for page to load
+            WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.TAG_NAME, "body"))
+            )
+            
+            # Look for component data in the page
+            components = []
+            
+            # Debug: Log page content to understand structure
+            self.log_and_update(f"  Component page URL: {driver.current_url}")
+            page_title = driver.title
+            self.log_and_update(f"  Component page title: {page_title}")
+            
+            # Log the entire page text for debugging
+            page_text = driver.find_element(By.TAG_NAME, "body").text
+            self.log_and_update(f"  Full page text (first 1000 chars): {page_text[:1000]}")
+            self.log_and_update(f"  Full page text length: {len(page_text)} characters")
+            
+            # Try to find component tables or lists
+            try:
+                # Look for tables containing component information
+                tables = driver.find_elements(By.TAG_NAME, "table")
+                self.log_and_update(f"  Found {len(tables)} tables on component page.")
+                
+                for table_idx, table in enumerate(tables):
+                    try:
+                        rows = table.find_elements(By.TAG_NAME, "tr")
+                        self.log_and_update(f"    Table {table_idx + 1}: Found {len(rows)} rows")
+                        
+                        # Process all rows to find component information
+                        current_component_id = None
+                        current_component_name = None
+                        
+                        for row_idx, row in enumerate(rows):
+                            cells = row.find_elements(By.TAG_NAME, "td")
+                            if len(cells) >= 1:
+                                # Look for component ID and name patterns
+                                cell_text = [cell.text.strip() for cell in cells]
+                                self.log_and_update(f"      Row {row_idx + 1}: {cell_text}")
+                                
+                                # Check if this row contains component ID information
+                                for i, text in enumerate(cell_text):
+                                    if "構成品番" in text or "品番" in text:
+                                        self.log_and_update(f"      Found component ID row: {cell_text}")
+                                        # Extract component ID
+                                        if i + 1 < len(cell_text):
+                                            current_component_id = cell_text[i + 1]
+                                        else:
+                                            # Component ID might be in the same cell after the label
+                                            current_component_id = text.split("：")[-1].strip() if "：" in text else text.split(":")[-1].strip()
+                                        self.log_and_update(f"        Extracted component ID: {current_component_id}")
+                                        break
+                                
+                                # Check if this row contains component name information
+                                for i, text in enumerate(cell_text):
+                                    if "商品名" in text or "名称" in text:
+                                        self.log_and_update(f"      Found component name row: {cell_text}")
+                                        # Extract component name
+                                        if i + 1 < len(cell_text):
+                                            current_component_name = cell_text[i + 1]
+                                        else:
+                                            # Component name might be in the same cell after the label
+                                            current_component_name = text.split("：")[-1].strip() if "：" in text else text.split(":")[-1].strip()
+                                        self.log_and_update(f"        Extracted component name: {current_component_name}")
+                                        break
+                                
+                                # If we have both component ID and name, add to components list
+                                if current_component_id and current_component_name:
+                                    components.append({
+                                        'component_id': current_component_id,
+                                        'component_name': current_component_name
+                                    })
+                                    self.log_and_update(f"    Added component: {current_component_id} - {current_component_name}")
+                                    # Reset for next component
+                                    current_component_id = None
+                                    current_component_name = None
+                                    
+                    except Exception as e:
+                        self.log_and_update(f"    Error processing table {table_idx + 1}: {str(e)}")
+                        continue
+                        
+            except Exception as e:
+                self.log_and_update(f"  Error finding component tables: {str(e)}")
+            
+            # Alternative method: Look for component information in divs or other elements
+            if not components:
+                self.log_and_update("  No components found in tables, trying alternative extraction methods...")
+            else:
+                self.log_and_update(f"  Found {len(components)} components in tables, but trying alternative methods for better extraction...")
+            
+            try:
+                    # Method 1: Look for elements containing component information
+                    component_elements = driver.find_elements(By.XPATH, "//*[contains(text(), '構成品番') or contains(text(), '品番')]")
+                    self.log_and_update(f"  Found {len(component_elements)} elements with component information.")
+                    
+                    for element in component_elements:
+                        try:
+                            # Get the parent element to find related information
+                            parent = element.find_element(By.XPATH, "./..")
+                            text_content = parent.text
+                            self.log_and_update(f"    Element text content: {text_content[:200]}...")
+                            
+                            # Extract component ID and name using regex
+                            import re
+                            
+                            # Look for component ID patterns
+                            component_id_match = re.search(r'構成品番[：:]\s*([^\s\n]+)', text_content)
+                            if not component_id_match:
+                                component_id_match = re.search(r'品番[：:]\s*([^\s\n]+)', text_content)
+                            
+                            # Look for component name patterns - be more flexible with the pattern
+                            component_name_match = re.search(r'商品名[：:]\s*([^\n\r]+?)(?=\n|$|構成品番|品番)', text_content)
+                            if not component_name_match:
+                                component_name_match = re.search(r'名称[：:]\s*([^\n\r]+?)(?=\n|$|構成品番|品番)', text_content)
+                            if not component_name_match:
+                                # Try without colon
+                                component_name_match = re.search(r'商品名\s+([^\n\r]+?)(?=\n|$|構成品番|品番)', text_content)
+                            if not component_name_match:
+                                component_name_match = re.search(r'名称\s+([^\n\r]+?)(?=\n|$|構成品番|品番)', text_content)
+                            
+                            if component_id_match and component_name_match:
+                                component_id = component_id_match.group(1).strip()
+                                component_name = component_name_match.group(1).strip()
+                                
+                                components.append({
+                                    'component_id': component_id,
+                                    'component_name': component_name
+                                })
+                                self.log_and_update(f"    Found component via regex: {component_id} - {component_name}")
+                                
+                        except Exception as e:
+                            self.log_and_update(f"    Error processing component element: {str(e)}")
+                            continue
+                    
+                    # Method 2: Comprehensive text pattern search using the full page text
+                    self.log_and_update("  Trying comprehensive text pattern search...")
+                    # Use the page_text we already extracted for debugging
+                    self.log_and_update(f"  Using page text length: {len(page_text)} characters")
+                    
+                    # Look for patterns like "TCA573" or "TCF5831" (component IDs)
+                    import re
+                    component_id_patterns = re.findall(r'\b(TCA\d+[A-Z0-9#]*|TCF\d+[A-Z0-9#]*)\b', page_text)
+                    self.log_and_update(f"  Found potential component IDs: {component_id_patterns}")
+                    
+                    # Method 2a: Try to find all component blocks using a more comprehensive pattern
+                    self.log_and_update("  Trying comprehensive component block extraction...")
+                    # Look for patterns like: 構成品番：ID followed by 商品名：Name
+                    component_blocks = re.findall(r'構成品番[：:]\s*([^\s\n]+).*?商品名[：:]\s*([^\n\r]+?)(?=\n|$|構成品番|品番)', page_text, re.DOTALL)
+                    self.log_and_update(f"  Found {len(component_blocks)} component blocks: {component_blocks}")
+                    
+                    for comp_id, comp_name in component_blocks:
+                        comp_name = comp_name.strip()
+                        if comp_id and comp_name:
+                            components.append({
+                                'component_id': comp_id,
+                                'component_name': comp_name
+                            })
+                            self.log_and_update(f"    Added component from block: {comp_id} - {comp_name}")
+                    
+                    # Method 2b: For each potential component ID, try to find associated product name
+                    for comp_id in component_id_patterns:
+                        # Look for structured patterns around this component ID
+                        # Pattern: 構成品番：ID followed by 商品名：Name
+                        structured_pattern = rf'構成品番[：:]\s*{re.escape(comp_id)}.*?商品名[：:]\s*([^\n\r]+?)(?=\n|$|構成品番|品番)'
+                        structured_match = re.search(structured_pattern, page_text, re.DOTALL)
+                        
+                        if structured_match:
+                            component_name = structured_match.group(1).strip()
+                            components.append({
+                                'component_id': comp_id,
+                                'component_name': component_name
+                            })
+                            self.log_and_update(f"    Found component via structured pattern: {comp_id} - {component_name}")
+                        else:
+                            # Fallback: Look for text around this component ID
+                            pattern = rf'.{{0,200}}{re.escape(comp_id)}.{{0,200}}'
+                            matches = re.findall(pattern, page_text, re.IGNORECASE)
+                            for match in matches:
+                                # Try to extract product name from the context
+                                name_match = re.search(r'([^。\n]{10,50})', match)
+                                if name_match:
+                                    potential_name = name_match.group(1).strip()
+                                    if len(potential_name) > 5:  # Reasonable product name length
+                                        components.append({
+                                            'component_id': comp_id,
+                                            'component_name': potential_name
+                                        })
+                                        self.log_and_update(f"    Found component via pattern: {comp_id} - {potential_name}")
+                                        break
+                            
+            except Exception as e:
+                self.log_and_update(f"  Error with alternative component extraction: {str(e)}")
+            
+            # Remove duplicates and keep the best component names
+            self.log_and_update(f"  Before deduplication: {len(components)} components found")
+            unique_components = {}
+            for comp in components:
+                comp_id = comp['component_id']
+                comp_name = comp['component_name']
+                
+                # If we haven't seen this component ID, or if this name is longer (more complete), use it
+                if comp_id not in unique_components or len(comp_name) > len(unique_components[comp_id]['component_name']):
+                    unique_components[comp_id] = comp
+                    self.log_and_update(f"    Updated component {comp_id}: {comp_name}")
+            
+            components = list(unique_components.values())
+            self.log_and_update(f"  After deduplication: {len(components)} unique components")
+            
+            # Filter out duplicates and the main product ID, and improve component names
+            filtered_components = []
+            seen_ids = set()
+            main_product_id = product_id.split('#')[0] if '#' in product_id else product_id
+            
+            # Common component name mappings for better display
+            component_name_mappings = {
+                'TCA573': 'リモコン便器洗浄ユニット',
+                'TCA': 'リモコン便器洗浄ユニット',  # Generic pattern
+                'TCF': 'ウォシュレット',  # Generic pattern for washlet components
+            }
+            
+            for component in components:
+                comp_id = component['component_id']
+                comp_name = component['component_name']
+                
+                # Skip if we've already seen this component ID
+                if comp_id in seen_ids:
+                    self.log_and_update(f"    Skipping duplicate component: {comp_id}")
+                    continue
+                
+                # Skip if this is the main product ID (not a sub-component)
+                if comp_id == product_id or comp_id == main_product_id:
+                    self.log_and_update(f"    Skipping main product ID: {comp_id}")
+                    continue
+                
+                # Skip if the component ID is very similar to the main product ID
+                if comp_id.startswith(main_product_id) and len(comp_id) - len(main_product_id) <= 3:
+                    self.log_and_update(f"    Skipping similar to main product ID: {comp_id}")
+                    continue
+                
+                # Improve component name if it's generic or contains the component ID
+                if not comp_name or comp_id in comp_name or '構成品番' in comp_name or '品番' in comp_name:
+                    # Try to find a better name from mappings
+                    better_name = None
+                    for pattern, name in component_name_mappings.items():
+                        if comp_id.startswith(pattern):
+                            better_name = name
+                            break
+                    
+                    if better_name:
+                        comp_name = better_name
+                        self.log_and_update(f"    Improved component name for {comp_id}: {comp_name}")
+                    else:
+                        # Fallback to a generic name
+                        comp_name = f"コンポーネント {comp_id}"
+                        self.log_and_update(f"    Using fallback name for {comp_id}: {comp_name}")
+                
+                filtered_components.append({
+                    'component_id': comp_id,
+                    'component_name': comp_name
+                })
+                seen_ids.add(comp_id)
+                self.log_and_update(f"    Added component: {comp_id} - {comp_name}")
+            
+            self.log_and_update(f"  Component extraction completed. Found {len(components)} total, {len(filtered_components)} unique components after filtering.")
+            return filtered_components if filtered_components else None
+            
+        except Exception as e:
+            self.log_and_update(f"  Error in component data extraction: {str(e)}")
+            return None
+
+    def extract_features_data(self, driver):
+        """Extract features data from the specifications page class='spec' section"""
+        self.log_and_update("    Starting features data extraction...")
+        try:
+            features_data = {}
+            
+            # Look for the features section with class="spec"
+            spec_sections = driver.find_elements(By.CSS_SELECTOR, "section.spec")
+            self.log_and_update(f"    Found {len(spec_sections)} spec sections.")
+            
+            for section in spec_sections:
+                try:
+                    # Look for the faculty table within this section
+                    faculty_tables = section.find_elements(By.CSS_SELECTOR, "table.facultyTable")
+                    self.log_and_update(f"      Found {len(faculty_tables)} faculty tables in section.")
+                    
+                    for table in faculty_tables:
+                        rows = table.find_elements(By.TAG_NAME, "tr")
+                        self.log_and_update(f"        Processing {len(rows)} rows in faculty table.")
+                        
+                        for row in rows:
+                            try:
+                                # Get the category from th tag
+                                th_elements = row.find_elements(By.TAG_NAME, "th")
+                                if not th_elements:
+                                    continue
+                                
+                                category_text = th_elements[0].text.strip()
+                                # Remove "機能ガイド" text and links
+                                if "機能ガイド" in category_text:
+                                    category_text = category_text.split("機能ガイド")[0].strip()
+                                
+                                self.log_and_update(f"          Found category: {category_text}")
+                                
+                                # Get the functions from li tags
+                                functions = []
+                                li_elements = row.find_elements(By.CSS_SELECTOR, "ul.faculty li")
+                                for li in li_elements:
+                                    function_text = li.text.strip()
+                                    if function_text:
+                                        functions.append(function_text)
+                                        self.log_and_update(f"            Found function: {function_text}")
+                                
+                                if category_text and functions:
+                                    features_data[category_text] = functions
+                                    self.log_and_update(f"          Added category '{category_text}' with {len(functions)} functions.")
+                                    
+                            except Exception as e:
+                                self.log_and_update(f"          Error processing row: {str(e)}")
+                                continue
+                                
+                except Exception as e:
+                    self.log_and_update(f"      Error processing spec section: {str(e)}")
+                    continue
+            
+            self.log_and_update(f"    Features extraction completed. Found {len(features_data)} categories.")
+            return features_data if features_data else None
+            
+        except Exception as e:
+            self.log_and_update(f"    Error in features data extraction: {str(e)}")
+            return None
+
     def extract_specifications_data(self, driver, specs_link, specs_href, product_id):
         """Extract specifications table data and return as structured data"""
         self.log_and_update("  Starting specifications data extraction process.")
         original_window = driver.current_window_handle
         try:
-            # Click the specifications link
+            # Navigate to specifications page using URL directly to avoid stale element issues
             try:
-                if specs_link is not None:
-                    self.log_and_update("    Clicking on specs link element.")
-                    driver.execute_script("arguments[0].scrollIntoView(true);", specs_link)
-                    time.sleep(1)
-                    specs_link.click()
-                    time.sleep(3)
-                elif specs_href:
+                if specs_href:
                     self.log_and_update(f"    Navigating to specs URL: {specs_href}")
                     driver.get(specs_href)
-                    time.sleep(3)
+                elif specs_link is not None:
+                    # Get the href from the element before it becomes stale
+                    try:
+                        href = specs_link.get_attribute('href')
+                        if href:
+                            self.log_and_update(f"    Navigating to specs URL from element: {href}")
+                            driver.get(href)
+                        else:
+                            self.log_and_update("    No href found on specs link element.")
+                            return None
+                    except Exception as e:
+                        self.log_and_update(f"    Error getting href from specs link: {str(e)}")
+                        return None
                 else:
                     self.log_and_update("    No specifications link or URL available. Skipping.")
                     return None
@@ -1458,12 +1876,23 @@ class ComEtCrawler:
             table_data = self.extract_table_data(specs_table)
             self.log_and_update(f"    Extracted {len(table_data)} rows of table data.")
             
+            # Extract features from the specifications page
+            features_data = self.extract_features_data(driver)
+            if features_data:
+                self.log_and_update(f"    Extracted {len(features_data)} feature categories.")
+            else:
+                self.log_and_update("    No features data found.")
+            
             if len(driver.window_handles) > 1 and driver.current_window_handle != original_window:
                 self.log_and_update("    Closing new window and returning to original.")
                 driver.close()
                 driver.switch_to.window(original_window)
             
-            return table_data
+            # Return both table data and features data
+            return {
+                'table_data': table_data,
+                'features_data': features_data
+            }
             
         except Exception as e:
             self.log_and_update(f"    Error extracting specifications data: {str(e)}")
@@ -1486,9 +1915,9 @@ class ComEtCrawler:
             elif product_id.startswith('TOTO'):
                 return "TOTO（トートー）"
             else:
-                return "Unknown Manufacturer"
+                return "TOTO（トートー）"
         except Exception:
-            return "Unknown Manufacturer"
+            return "TOTO（トートー）"
 
     def extract_series_from_product_name(self, product_name):
         """Extract series information from product name"""
@@ -1627,7 +2056,7 @@ class ComEtCrawler:
             self.log_and_update(f"      Error generating Rakuten HTML: {str(e)}")
             return None
 
-    def generate_template_html(self, table_data, product_id, product_name="", manufacturer="", series=""):
+    def generate_template_html(self, specs_data, product_id, product_name="", manufacturer="", series="", components=None):
         """Generate HTML following the template structure with product-specific information"""
         self.log_and_update("      Generating template HTML...")
         try:
@@ -1641,11 +2070,23 @@ class ComEtCrawler:
             # Format product ID with color name if available
             formatted_product_id = self.format_product_id_with_color(product_id)
             
+            # Handle both old format (table_data) and new format (specs_data dict)
+            if isinstance(specs_data, dict):
+                table_data = specs_data.get('table_data', [])
+                features_data = specs_data.get('features_data', {})
+            else:
+                # Backward compatibility for old format
+                table_data = specs_data
+                features_data = {}
+            
             # Generate specifications table HTML
             specs_table_html = self.generate_specs_table_html(table_data)
             
             # Generate features HTML
-            features_html = self.generate_features_html(table_data)
+            features_html = self.generate_features_html(features_data)
+            
+            # Generate component HTML
+            component_html = self.generate_component_html(components, formatted_product_id, product_name)
             
             html_content = f"""<!DOCTYPE html>
 <html lang="en">
@@ -1675,7 +2116,7 @@ https://www.com-et.com/jp/item_color_search/searchStr={product_id.replace('#', '
       <br>
       品&nbsp;&nbsp;番&nbsp;&nbsp;&nbsp;：◆{formatted_product_id}
       <br>
-      商&nbsp;品&nbsp;名&nbsp;：{product_name if product_name else 'Unknown Product'}
+      商&nbsp;品&nbsp;名&nbsp;{product_name if product_name else 'Unknown Product'}
       <br>
       シリーズ：{series if series else 'Unknown Series'}
       <br>
@@ -1692,24 +2133,14 @@ https://www.com-et.com/jp/item_color_search/searchStr={product_id.replace('#', '
   ※詳しい施工方法や商品詳細については、カタログやメーカー様にてご確認ください。
   <br>
   <!-- ◆◆◆　ここに納期等入れる -->
+  <b><font color="#FF0000">※商品の納期は、およそ___かかります。</font></b>
   <br>
   <!-- /// ◆◆◆　定型文 -->
-
+  <br>
+  <br>
 
   <!-- ●●●●● コメットから情報取得 ●●●●● 構成品 -->
-  【 セット品番 ：{formatted_product_id} 】
-  <br>
-  <br>{formatted_product_id}
-  <br>
-  -------------------------------------------------------
-  <br>
-  構成品番 ： ◆{formatted_product_id}
-  <br>
-  商品名 ： {product_name if product_name else 'Unknown Product'}
-  <br>
-  -------------------------------------------------------
-  <br>
-  <br>
+{component_html}
   <!-- /// コメットから情報取得 ●●●●● 構成品 -->
 
 
@@ -1784,53 +2215,91 @@ https://www.com-et.com/jp/item_color_search/searchStr={product_id.replace('#', '
             self.log_and_update(f"      Error generating specs table HTML: {str(e)}")
             return "  <table bgcolor=\"#000000\" cellspacing=\"1\" cellpadding=\"3\">\n  </table>"
 
-    def generate_features_html(self, table_data):
+    def generate_component_html(self, components, formatted_product_id, product_name):
+        """Generate the component section HTML following the template format"""
+        try:
+            if not components:
+                # Fallback to original structure if no components found
+                return f"""  【 セット品番 ：{formatted_product_id} 】
+  <br>
+  <br>{formatted_product_id}
+  <br>
+  -------------------------------------------------------
+  <br>
+  構成品番 ： ◆{formatted_product_id}
+  <br>
+  商品名 ： {product_name if product_name else 'Unknown Product'}
+  <br>
+  -------------------------------------------------------
+  <br>
+  <br>"""
+            
+            # Generate component list for the main line
+            component_ids = [comp['component_id'] for comp in components]
+            component_list = " + ".join(component_ids)
+            
+            # If no components, fall back to the main product ID
+            if not component_list:
+                component_list = formatted_product_id
+            
+            # Start building the HTML
+            html_parts = [
+                f"  【 セット品番 ：{formatted_product_id} 】",
+                "  <br>",
+                f"  <br>{component_list}",
+                "  <br>"
+            ]
+            
+            # Add each component
+            for component in components:
+                html_parts.extend([
+                    "  -------------------------------------------------------",
+                    "  <br>",
+                    f"  構成品番 ： ◆{component['component_id']}",
+                    "  <br>",
+                    f"  商品名 ： {component['component_name']}",
+                    "  <br>"
+                ])
+            
+            html_parts.extend([
+                "  -------------------------------------------------------",
+                "  <br>",
+                "  <br>"
+            ])
+            
+            return "\n".join(html_parts)
+            
+        except Exception as e:
+            self.log_and_update(f"      Error generating component HTML: {str(e)}")
+            # Return fallback HTML
+            return f"""  【 セット品番 ：{formatted_product_id} 】
+  <br>
+  <br>{formatted_product_id}
+  <br>
+  -------------------------------------------------------
+  <br>
+  構成品番 ： ◆{formatted_product_id}
+  <br>
+  商品名 ： {product_name if product_name else 'Unknown Product'}
+  <br>
+  -------------------------------------------------------
+  <br>
+  <br>"""
+
+    def generate_features_html(self, features_data):
         """Generate the features section HTML following the template format"""
         try:
-            # Extract features from the table data
-            cleaning_features = []
-            comfort_features = []
-            eco_features = []
-            hygiene_features = []
-            
-            # Process each row to extract features
-            for row_data in table_data:
-                cells = row_data['cells']
-                
-                # Look for feature-related items in the table
-                for i, cell in enumerate(cells):
-                    if cell['type'] == 'th' and cell['text']:
-                        item_name = cell['text']
-                        
-                        # Get the corresponding value from the next cell
-                        value = ""
-                        if i + 1 < len(cells) and cells[i + 1]['type'] == 'td':
-                            value = cells[i + 1]['text']
-                        
-                        # Categorize based on item names
-                        if any(keyword in item_name for keyword in ['洗浄', '水勢', 'ビデ', 'おしり']):
-                            if value and value != "-":
-                                cleaning_features.append(f"・{value}")
-                        elif any(keyword in item_name for keyword in ['暖房', '脱臭', 'リモコン', 'センサ', '音姫', '電子音']):
-                            if value and value != "-":
-                                comfort_features.append(f"・{value}")
-                        elif any(keyword in item_name for keyword in ['節電', 'オフ', 'エコ']):
-                            if value and value != "-":
-                                eco_features.append(f"・{value}")
-                        elif any(keyword in item_name for keyword in ['ノズル', '抗菌', 'クリーニング', 'クリーン', '便器', '便座']):
-                            if value and value != "-":
-                                hygiene_features.append(f"・{value}")
+            if not features_data:
+                return ""
             
             html = ""
             
-            if cleaning_features:
-                html += "  <br><b>洗浄機能</b><br>" + "<br>".join(cleaning_features[:5])  # Limit to 5 features
-            if comfort_features:
-                html += "<br><b>快適機能</b><br>" + "<br>".join(comfort_features[:10])  # Limit to 10 features
-            if eco_features:
-                html += "<br><b>エコ機能</b><br>" + "<br>".join(eco_features[:5])  # Limit to 5 features
-            if hygiene_features:
-                html += "<br><b>清潔機能</b><br>" + "<br>".join(hygiene_features[:10])  # Limit to 10 features
+            # Generate HTML for each feature category
+            for category, functions in features_data.items():
+                if functions:
+                    # Format functions with bullet points
+                    formatted_functions = [f"・{func}" for func in functions]
+                    html += f"  <br><b>{category}</b><br>" + "<br>".join(formatted_functions)
             
             return html
         except Exception as e:

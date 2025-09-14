@@ -1,0 +1,35 @@
+(function() {
+	var jsfiles = [
+		'jquery-1.11.1.min.js',
+		'jquery-1.7.1.min.js',
+		'no-conflict.js',
+		'perfect-scrollbar.with-mousewheel.min.js',
+		'perfect-scrollbar.min.js',
+		'easyselectbox.js',
+		'jquery.uniform.min.js',
+		'smoothScroll.js',
+		'jquery.flatHeight.1.1.min.js',
+		'cad_search.js',
+		'jquery.tooltipster.js',
+		'jquery.colorbox-min.js',
+		'jquery.exresize.0.1.0.js',
+		'jquery.matchHeight-min.js',
+
+		'common.js' //←一番最後に読み込むこと
+
+	];  // ロードされるスクリプト（このファイルからの相対パス指定）
+
+	/****************************** DO NOT EDIT BELOW *****************************/
+	function lastof(es)    { return es[es.length - 1]; }
+	function dirname(path) { return path.substring(0, path.lastIndexOf('/')); }
+	var prefix = dirname(lastof(document.getElementsByTagName('script')).src),
+		date = new Date(),
+		year = date.getFullYear(),
+		month = date.getMonth() + 1,
+		day = date.getDate(),
+		hour = date.getHours(),
+		datetime = "" + year + ('0' + month).slice(-2) + ('0' + day).slice(-2) + ('0' + hour).slice(-2) ;
+	for(var i = 0; i < jsfiles.length; i++) {
+	    document.write('<script type="text/javascript" src="' + prefix + '/' + jsfiles[i] + '?' + datetime + '"></script>');
+	}
+}).call(this);

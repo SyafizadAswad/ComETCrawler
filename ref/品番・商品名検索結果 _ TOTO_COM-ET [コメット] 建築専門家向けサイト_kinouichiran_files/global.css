@@ -1,0 +1,369 @@
+@charset "utf-8";
+/**********************************************
+TOTO コメット
+グローバル　CSS
+***********************************************/
+body.previewBody {
+	background: #eee url(../../img/default/global/preview.gif) 0 0 repeat-y;
+	padding-left: 110px;
+}
+body.previewBody .previewButton {
+	position: absolute;
+	top: 0;
+	left: 0;
+	padding: 2px;
+}
+body.previewBody .previewButton button {
+	height: 50px;
+	width: 105px;
+}
+#wrapper {
+	min-height: 100%;
+	min-width: 980px;
+	_height: auto !important;
+	_height:  100%;
+	position: relative;
+	overflow: hidden;
+	margin: 0 auto;
+}
+
+/*============================================================
+  #gHeader
+============================================================*/
+#gHeader {
+	background: #fff;
+	border-bottom: 6px solid #1152b2;
+	min-width: 980px;
+	position: relative;
+}
+#gHeader .inner {
+	padding: 15px 0 0;
+	width: 960px;
+	margin: 0 auto;
+	*zoom:1;
+}
+#gHeader .inner:before,
+#gHeader .inner:after {
+	content: ".";
+	display: block;
+	height: 0;
+	visibility: hidden;
+}
+#gHeader .inner:after {clear: both;}
+/***  左エリア ***/
+#gHeader .leftArea {
+	float: left;
+}
+#gHeader h1 {
+	margin: 10px 0 9px;
+	padding: 0;
+	line-height: 1;
+}
+#gHeader .logo {
+	float: left;
+	margin: 0 20px 16px 0;
+	line-height: 1;
+}
+#gHeader .btnTop {
+	float: left;
+	margin: 12px 0 0;
+}
+#gHeader .btnTop a {
+	display: block;
+	text-align: center;
+	width: 80px;
+	height: 30px;
+	line-height: 30px;
+	background: #1152b2;
+	color: #fff;
+	font-size: 86.66%;
+}
+#gHeader .btnTop a:hover {
+	background: #5986c9;
+	text-decoration: none;
+}
+
+/***  右エリア ***/
+#gHeader .rightArea {
+	float: right;
+	/*text-align: right;*/
+	/*width: 670px;*/
+	display: grid;
+	grid-template-columns: 1fr 80px;
+	gap: 22px 10px;
+}
+#gHeader .totoLogo {
+	grid-row: 1;
+	grid-column: 2;
+	margin: 0;
+}
+#gHeader .subNavOuter {
+	grid-row: 1 / span 2;
+	grid-column: 1;
+	align-self: center;
+}
+#gHeader .subNavTitle {
+	margin: 0 0 10px;
+	font-size: 83%;
+}
+#gHeader .subNav {
+	font-size: 86.66%;
+	display:inline-block;
+	*display:inline;
+	*zoom:1;
+	vertical-align: top;
+	margin: 0;
+}
+#gHeader .subNav li {
+	text-align: center;
+	float: left;
+	margin: 0 0 0 1px;
+}
+#gHeader .subNav a {
+	display: block;
+	background: #555;
+	width: 93px;
+	height: 30px;
+	line-height: 30px;
+	color: #fff;
+}
+#gHeader .subNav .logined a {
+	width: 146px;
+}
+#gHeader .subNav a:hover {
+	background: #888;
+}
+#gHeader .subNav a:hover {
+	text-decoration: none;
+}
+#gHeader .btnSearch {
+	grid-row: 2;
+	grid-column: 2;
+	margin: 0;
+}
+#gHeader .btnSearch a {
+	display: block;
+	width: 79px;
+	height: 45px;
+	background: url(../../img/default/global/btn_search.gif) 0 0 no-repeat;
+	text-align: left;
+	text-indent: -9999px;
+}
+#gHeader .btnSearch a:hover {
+	background-position: 0 bottom;
+}
+
+/*============================================================
+  #gSearch
+============================================================*/
+#gSearch {
+	position: absolute;
+	top: 112px;
+	left: 0;
+	z-index: 500;
+	background: #0b2346;
+	width: 100%;
+	display: none;
+}
+#gSearch .inner {
+	padding: 20px 0;
+	text-align: right;
+}
+#gSearch .select01 .esb-displayer {
+	width: 130px;
+	height: 44px;
+	line-height: 44px;
+}
+#gSearch .select01 .esb-dropdown {
+	width: 180px;
+}
+#gSearch input[type="text"] {
+	-webkit-box-sizing: border-box;
+	-moz-box-sizing: border-box;
+	box-sizing: border-box;
+	width: 612px;
+	height: 44px;
+	/* line-height: 44px; */
+	padding: 13px 12px;
+	color: #222;
+	border: none;
+}
+#gSearch input[type="submit"] {
+	text-indent: -9999px;
+	background: url(../../img/default/global/btn_gsearch.png) 0 0 no-repeat;
+	width: 128px;
+	height: 44px;
+	margin-left: 20px;
+	cursor: pointer;
+}
+#gSearch input[type="submit"]:hover {
+	background-position: 0 bottom;
+}
+#gSearch .toGuide {
+	margin: 15px 81px 0 0;
+	float: right;
+	background: url(../../img/default/icon/arrow04.png) 0 center no-repeat;
+	padding-left: 10px;
+}
+#gSearch .toGuide a {
+	color: #fff;
+}
+#gSearch .linkHowto {
+	background: url(../../img/default/icon/arrow04.png) 0 center no-repeat;
+	padding-left: 10px;
+	margin: 18px 81px 0 0;
+	float: right;
+	line-height: 1;
+}
+#gSearch .linkHowto a {
+	color: #fff;
+}
+#gSearch .btnClose {
+	margin: 18px 0 0;
+	float: right;
+}
+#gSearch .btnClose img {
+	vertical-align: top;
+}
+#gSearch .checks {
+	color: #fff;
+	float: left;
+	margin: 18px 0 0 20px;
+	display: none;
+	line-height: 1;
+}
+#gSearch .checks label {
+	margin: 0 20px 0 0;
+}
+#gSearch .checks.cate01-02 {
+	padding-left: 20px;
+	border-left: 1px solid #243959;
+	margin-left: 0;
+}
+
+/*============================================================
+  #gNav
+============================================================*/
+#gNav {
+	background: #142f57;
+	position: relative;
+	z-index: 100;
+	min-width: 980px;
+}
+#gNav .mainNav {
+	width: 960px;
+	margin: 0 auto;
+	overflow:hidden;
+	*zoom:1;
+}
+#gNav .mainNav li {
+	float: left;
+	margin: 0;
+}
+#gNav .mainNav a {
+	display: block;
+	text-indent: -9999px;
+	width: 240px;
+	height: 50px;
+	background: url(../../img/default/global/gnav.gif) 0 0 no-repeat;
+}
+#gNav .mainNav .gNav01 a { background-position: 0 0; }
+#gNav .mainNav .gNav02 a { background-position: -240px 0; }
+#gNav .mainNav .gNav03 a { background-position: -480px 0; }
+#gNav .mainNav .gNav04 a { background-position: -720px 0; }
+
+#gNav .mainNav .gNav01 .active { background-position: 0 bottom; }
+#gNav .mainNav .gNav02 .active { background-position: -240px bottom; }
+#gNav .mainNav .gNav03 .active { background-position: -480px bottom; }
+#gNav .mainNav .gNav04 .active { background-position: -720px bottom; }
+
+/*** ドロップダウン ***/
+#gNav .dropDown {
+	position: absolute;
+	left: 0;
+	top: 50px;
+	width: 100%;
+	background: #0b2346;
+	padding: 20px 0 12px 0;
+	display: none;
+}
+#gNav .dropDown ul {
+	width: 970px;
+	margin: 0 auto;
+	overflow:hidden;
+	*zoom:1;
+	display: none;
+}
+#gNav .dropDown li {
+	margin: 0 5px 11px;
+	float: left;
+}
+#gNav .dropDown a {
+	background: none;
+	text-indent: 0;
+	width: auto;
+	height: auto;
+}
+
+#gNav .dropDown .btnClose {
+	width: 960px;
+	text-align: right;
+	margin: 0 auto;
+}
+
+/*============================================================
+  #contents
+============================================================*/
+#contents {
+	width: 960px;
+	margin: 18px auto 0;
+	position: relative;
+	padding: 0 0 40px;
+	/* padding-bottom: 100px; *//* フッタの高さ */
+}
+/*============================================================
+  #main
+============================================================*/
+
+/*============================================================
+  #side
+============================================================*/
+
+/*============================================================
+  #gFooter
+============================================================*/
+#gFooter {
+	background: #142f57;
+	min-width: 980px;
+	/* position: absolute;
+	left: 0;
+	bottom: 0; */
+}
+#gFooter .inner {
+	width: 960px;
+	margin: 0 auto;
+	padding: 30px 0 23px;
+	overflow:hidden;
+	*zoom:1;
+	text-align: center;
+}
+#gFooter ul {
+	float: left;
+	color: #fff;
+	overflow:hidden;
+	*zoom:1;
+	font-size: 93.33%;
+	margin: 0;
+}
+#gFooter li {
+	float: left;
+}
+#gFooter a {
+	color: #fff;
+}
+#gFooter .copyright {
+	margin: 0;
+	color: #fff;
+	vertical-align: bottom;
+	font-size: 86.66%;
+}
