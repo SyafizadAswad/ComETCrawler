@@ -16,6 +16,7 @@ from webdriver_manager.chrome import ChromeDriverManager
 from bs4 import BeautifulSoup
 import re
 import urllib.request
+import json
 import config
 from selenium.common.exceptions import TimeoutException, WebDriverException
 
@@ -33,12 +34,62 @@ class ComEtCrawler:
         self.is_searching = False
         self.log_file_path = None
         
+        # Load color codes
+        self.color_codes = self.load_color_codes()
+        
         # Output directory
         self.output_dir = config.OUTPUT_DIR
         if not os.path.exists(self.output_dir):
             os.makedirs(self.output_dir)
         
         self.setup_gui()
+    
+    def load_color_codes(self):
+        """Load color codes from the JSON file"""
+        try:
+            color_code_file = os.path.join(os.path.dirname(__file__), 'colorcode.json')
+            with open(color_code_file, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception as e:
+            self.log_and_update(f"Error loading color codes: {str(e)}")
+            return {}
+    
+    def get_color_name_from_product_id(self, product_id):
+        """Extract color name from product ID using color codes mapping"""
+        try:
+            if not product_id or not self.color_codes:
+                return ""
+            
+            # Look for color codes in the product ID
+            # Common patterns: #SC1, #54R, #1, etc.
+            color_patterns = [
+                r'#([A-Z0-9]+)',  # Matches #SC1, #54R, etc.
+                r'([A-Z0-9]+)$'   # Matches color codes at the end
+            ]
+            
+            for pattern in color_patterns:
+                matches = re.findall(pattern, product_id)
+                for match in matches:
+                    color_code = f"#{match}"
+                    if color_code in self.color_codes:
+                        return self.color_codes[color_code]
+            
+            return ""
+        except Exception as e:
+            self.log_and_update(f"Error extracting color name from {product_id}: {str(e)}")
+            return ""
+    
+    def format_product_id_with_color(self, product_id):
+        """Format product ID with color name if available"""
+        try:
+            color_name = self.get_color_name_from_product_id(product_id)
+            if color_name:
+                return f"{product_id}({color_name})"
+            else:
+                return product_id
+        except Exception as e:
+            self.log_and_update(f"Error formatting product ID {product_id}: {str(e)}")
+            return product_id
         
     def setup_gui(self):
         # Main frame
@@ -395,157 +446,8 @@ class ComEtCrawler:
                     except Exception as e:
                         self.log_and_update(f"Alternative search method with JavaScript failed: {str(e)}")
                 
-                # Get current page source
-                page_source = driver.page_source
-                soup = BeautifulSoup(page_source, 'html.parser')
-                
-                # Look for product containers on search results page
-                self.log_and_update("Analyzing search results page for product containers...")
-                
-                # Find product containers using Selenium for better interaction
-                product_containers = []
-                
-                # Wait for search results to be visible
-                try:
-                    WebDriverWait(driver, 10).until(
-                        EC.presence_of_element_located((By.CSS_SELECTOR, "body"))
-                    )
-                    self.log_and_update("Search results container body is present.")
-                except TimeoutException:
-                    self.log_and_update("Timeout waiting for search results container body.")
-                
-                # Look for product containers with various selectors
-                container_selectors = [
-                    "table.productTable tr",  # Main product table rows
-                    ".product",
-                    ".item", 
-                    ".result",
-                    "[class*='product']",
-                    "[class*='item']",
-                    "[class*='result']",
-                    "div[class*='product']",
-                    "div[class*='item']",
-                    "li[class*='product']",
-                    "li[class*='item']"
-                ]
-                
-                for selector in container_selectors:
-                    try:
-                        self.log_and_update(f"Trying selector: {selector}")
-                        containers = driver.find_elements(By.CSS_SELECTOR, selector)
-                        if containers:
-                            # Filter out header rows and empty rows
-                            filtered_containers = []
-                            for container in containers:
-                                try:
-                                    container_text = container.text
-                                    # Only include rows that have product information
-                                    if any(keyword in container_text for keyword in ['品番', '商品名', '商品図', 'Product']):
-                                        filtered_containers.append(container)
-                                except:
-                                    continue
-                            
-                            if filtered_containers:
-                                product_containers = filtered_containers
-                                self.log_and_update(f"Found {len(filtered_containers)} product containers using selector: {selector}")
-                                break
-                    except Exception as e:
-                        self.log_and_update(f"Selector {selector} failed: {e}")
-                        continue
-                
-                # If no containers found with specific selectors, try to find by content
-                if not product_containers:
-                    self.log_and_update("No product containers found with specific selectors. Looking for product containers by content...")
-                    try:
-                        # Look for elements containing product information
-                        all_divs = driver.find_elements(By.TAG_NAME, "div")
-                        for div in all_divs:
-                            try:
-                                div_text = div.text
-                                if any(keyword in div_text for keyword in ['品番', '商品名', '商品図', 'Product']):
-                                    product_containers.append(div)
-                            except:
-                                continue
-                    except Exception as e:
-                        self.log_and_update(f"Searching by content failed: {e}")
-                
-                if not product_containers:
-                    self.log_and_update("No product containers found, trying alternative approach...")
-                    # Try to find any elements that might contain products
-                    try:
-                        all_elements = driver.find_elements(By.CSS_SELECTOR, "div, li, section")
-                        for element in all_elements:
-                            try:
-                                element_text = element.text
-                                if '品番' in element_text and '商品図' in element_text:
-                                    product_containers.append(element)
-                            except:
-                                continue
-                    except Exception as e:
-                        self.log_and_update(f"Alternative approach failed: {e}")
-                
-                self.log_and_update(f"Found {len(product_containers)} potential product containers")
-                
-                # Process each product container
-                products_data = []
-                # Use a set to keep track of processed product IDs to avoid duplicates
-                seen_product_ids = set() 
-
-                for i, container in enumerate(product_containers):
-                    try:
-                        self.log_and_update(f"Extracting info from container {i+1}/{len(product_containers)}")
-                        
-                        # Extract product information from container
-                        product_info = self.extract_product_info(container, driver)
-                        
-                        if product_info and product_info['product_id'] not in seen_product_ids:
-                            products_data.append(product_info)
-                            seen_product_ids.add(product_info['product_id'])
-                            self.log_and_update(f"Found product: {product_info['product_id']} - {product_info['product_name']}")
-                        elif product_info and product_info['product_id'] in seen_product_ids:
-                            self.log_and_update(f"Skipping duplicate product: {product_info['product_id']}")
-                        
-                    except Exception as e:
-                        self.log_and_update(f"Error extracting from container {i+1}: {str(e)}")
-                
-                if not products_data:
-                    self.log_and_update("No products found in containers. Trying fallback method...")
-                    # Fallback: try to find any 商品図 links on the page
-                    fallback_products = self.fallback_product_detection(driver)
-                    for product in fallback_products:
-                        if product['product_id'] not in seen_product_ids:
-                            products_data.append(product)
-                            seen_product_ids.add(product['product_id'])
-
-                self.log_and_update(f"Found {len(products_data)} unique products. Starting downloads...")
-                self.log_and_update(f"Found {len(products_data)} unique products to process.")
-                
-                if not products_data:
-                    self.log_and_update("No products found. The search might not have returned any results.")
-                    return
-                
-                # Process each product and download diagrams
-                downloaded_count = 0
-                for i, product in enumerate(products_data):
-                    self.update_status(f"Processing product {i+1}/{len(products_data)}: {product['product_id']}")
-                    self.progress_var.set((i / len(products_data)) * 100)
-                    
-                    try:
-                        # Ensure we're on the search results page before processing each product
-                        self.ensure_on_search_results_page(driver)
-                        
-                        self.log_and_update(f"Starting processing for product {i+1}/{len(products_data)}: {product['product_id']}")
-                        if self.process_product_diagrams(driver, product):
-                            downloaded_count += 1
-                            self.log_and_update(f"Successfully completed processing for {product['product_id']}")
-                        else:
-                            self.log_and_update(f"No downloads completed for {product['product_id']}")
-                    except Exception as e:
-                        self.log_and_update(f"Error processing {product['product_id']}: {str(e)}")
-                
-                self.progress_var.set(100)
-                self.update_status(f"Search completed. Downloaded items for {downloaded_count} products.")
-                self.log_and_update(f"Search completed. Downloaded items for {downloaded_count} products.")
+                # Process all result pages
+                self.process_search_results_across_pages(driver, product_id)
                 
             finally:
                 if driver:
@@ -579,6 +481,302 @@ class ComEtCrawler:
         except Exception as e:
             self.log_and_update(f"    Error ensuring on search results page: {str(e)}")
 
+    def process_search_results_across_pages(self, driver, search_product_id):
+        """Iterate all result pages, process products, and paginate via 次へ until done."""
+        total_downloaded = 0
+        page_index = 1
+        seen_product_ids = set()
+
+        while True:
+            try:
+                self.log_and_update(f"Analyzing search results page {page_index} for product containers...")
+                try:
+                    WebDriverWait(driver, 15).until(
+                        EC.presence_of_element_located((By.CSS_SELECTOR, "body"))
+                    )
+                except TimeoutException:
+                    self.log_and_update("Timeout waiting for page body; continuing anyway.")
+
+                # Locate product containers
+                product_containers = []
+                container_selectors = [
+                    "table.productTable tbody tr",
+                    "table.productTable tr",
+                    ".product",
+                    ".item",
+                    ".result",
+                    "[class*='product']",
+                    "[class*='item']",
+                    "[class*='result']",
+                    "div[class*='product']",
+                    "div[class*='item']",
+                    "li[class*='product']",
+                    "li[class*='item']"
+                ]
+
+                for selector in container_selectors:
+                    try:
+                        containers = driver.find_elements(By.CSS_SELECTOR, selector)
+                        if containers:
+                            filtered = []
+                            for container in containers:
+                                try:
+                                    text_value = container.text
+                                    if any(k in text_value for k in ['品番', '商品名', '商品図', 'Product']):
+                                        filtered.append(container)
+                                except Exception:
+                                    continue
+                            if filtered:
+                                product_containers = filtered
+                                self.log_and_update(f"Found {len(filtered)} product containers using selector: {selector}")
+                                break
+                    except Exception as e:
+                        self.log_and_update(f"Selector {selector} failed: {e}")
+
+                if not product_containers:
+                    self.log_and_update("No product containers with primary selectors. Trying broader search...")
+                    try:
+                        all_elements = driver.find_elements(By.CSS_SELECTOR, "div, li, section")
+                        for element in all_elements:
+                            try:
+                                et = element.text
+                                if '品番' in et and ('商品名' in et or '商品図' in et):
+                                    product_containers.append(element)
+                            except Exception:
+                                continue
+                    except Exception as e:
+                        self.log_and_update(f"Broader search failed: {e}")
+
+                self.log_and_update(f"Page {page_index}: {len(product_containers)} potential product containers found")
+
+                # Extract and process products for this page
+                products_data = []
+                for i, container in enumerate(product_containers):
+                    try:
+                        self.log_and_update(f"Extracting info from container {i+1}/{len(product_containers)} on page {page_index}")
+                        product_info = self.extract_product_info(container, driver)
+                        if product_info and product_info['product_id'] not in seen_product_ids:
+                            products_data.append(product_info)
+                            seen_product_ids.add(product_info['product_id'])
+                            self.log_and_update(f"Queued product: {product_info['product_id']} - {product_info['product_name']}")
+                        elif product_info:
+                            self.log_and_update(f"Skipping duplicate product: {product_info['product_id']}")
+                    except Exception as e:
+                        self.log_and_update(f"Error extracting container on page {page_index}: {str(e)}")
+
+                if not products_data:
+                    self.log_and_update("No products extracted; trying fallback detection on this page...")
+                    fallback_products = self.fallback_product_detection(driver)
+                    for product in fallback_products:
+                        if product['product_id'] not in seen_product_ids:
+                            products_data.append(product)
+                            seen_product_ids.add(product['product_id'])
+
+                if products_data:
+                    self.log_and_update(f"Processing {len(products_data)} products on page {page_index}...")
+                else:
+                    self.log_and_update(f"No products to process on page {page_index}.")
+
+                # Process each product, including color variations
+                for i, product in enumerate(products_data):
+                    try:
+                        self.update_status(f"Processing (page {page_index}) {product['product_id']}")
+                        
+                        # Check if this product has color variations
+                        color_variations = self.process_color_variations(driver, product)
+                        
+                        if color_variations:
+                            self.log_and_update(f"Found {len(color_variations)} color variations for {product['product_id']}")
+                            # Process each color variation
+                            for color_product in color_variations:
+                                if color_product['product_id'] not in seen_product_ids:
+                                    seen_product_ids.add(color_product['product_id'])
+                                    if self.process_product_diagrams(driver, color_product):
+                                        total_downloaded += 1
+                        else:
+                            # Process the original product if no color variations
+                            if self.process_product_diagrams(driver, product):
+                                total_downloaded += 1
+                                
+                    except Exception as e:
+                        self.log_and_update(f"Error processing {product.get('product_id', 'unknown')} on page {page_index}: {str(e)}")
+
+                # Pagination: click 次へ (class="next") if present
+                try:
+                    next_button = None
+                    try:
+                        # Prefer within section.searchInfo
+                        next_button = driver.find_element(By.CSS_SELECTOR, "section.searchInfo ul.pageing a.next")
+                    except Exception:
+                        # Fallback to any pagination next
+                        elems = driver.find_elements(By.CSS_SELECTOR, "ul.pageing a.next")
+                        if elems:
+                            next_button = elems[0]
+
+                    if next_button and next_button.is_displayed() and next_button.is_enabled():
+                        self.log_and_update("Next page detected. Navigating to the next page (次へ)...")
+                        driver.execute_script("arguments[0].scrollIntoView(true);", next_button)
+                        time.sleep(0.5)
+                        next_button.click()
+                        # wait for page navigation by checking URL or body refresh
+                        WebDriverWait(driver, 15).until(EC.presence_of_element_located((By.CSS_SELECTOR, "body")))
+                        time.sleep(2)
+                        page_index += 1
+                        continue
+                    else:
+                        self.log_and_update("No further pages detected. Finishing.")
+                        break
+                except Exception as e:
+                    self.log_and_update(f"Pagination check/click failed or no more pages: {str(e)}")
+                    break
+
+            except Exception as e:
+                self.log_and_update(f"Unexpected error while processing pages: {str(e)}")
+                break
+
+        self.progress_var.set(100)
+        self.update_status(f"Search completed across pages. Downloads completed for {total_downloaded} products.")
+        self.log_and_update(f"Search completed across pages. Downloads completed for {total_downloaded} products.")
+
+    def process_color_variations(self, driver, product):
+        """Process color variations for a product by clicking the color link and extracting all variants"""
+        try:
+            # Look for the color link within the product container
+            color_link = None
+            try:
+                # Find the productColorLink within the product container
+                color_link = product['container'].find_element(By.CSS_SELECTOR, ".productColorLink a")
+                self.log_and_update(f"  Found color variation link for {product['product_id']}")
+            except Exception as e:
+                self.log_and_update(f"  No color variation link found for {product['product_id']}: {str(e)}")
+                return []
+            
+            if not color_link:
+                return []
+            
+            # Store the original window handle
+            original_window = driver.current_window_handle
+            
+            try:
+                # Click the color link
+                self.log_and_update(f"  Clicking color variation link for {product['product_id']}")
+                driver.execute_script("arguments[0].scrollIntoView(true);", color_link)
+                time.sleep(1)
+                
+                # Check if a new window/tab opens
+                existing_handles = set(driver.window_handles)
+                color_link.click()
+                time.sleep(3)
+                
+                new_handles = set(driver.window_handles) - existing_handles
+                if new_handles:
+                    # Switch to the new window
+                    new_window = list(new_handles)[0]
+                    driver.switch_to.window(new_window)
+                    self.log_and_update(f"  Switched to color variations window for {product['product_id']}")
+                else:
+                    self.log_and_update(f"  Color variations opened in same window for {product['product_id']}")
+                
+                # Wait for the color variations page to load
+                try:
+                    WebDriverWait(driver, 15).until(
+                        EC.presence_of_element_located((By.CSS_SELECTOR, "body"))
+                    )
+                except TimeoutException:
+                    self.log_and_update(f"  Timeout waiting for color variations page to load for {product['product_id']}")
+                
+                # Extract all color variation products
+                color_products = self.extract_color_variation_products(driver, product)
+                
+                # Close the color variations window and return to original
+                if new_handles:
+                    driver.close()
+                    driver.switch_to.window(original_window)
+                    self.log_and_update(f"  Closed color variations window and returned to original for {product['product_id']}")
+                
+                return color_products
+                
+            except Exception as e:
+                self.log_and_update(f"  Error processing color variations for {product['product_id']}: {str(e)}")
+                # Try to return to original window
+                try:
+                    if len(driver.window_handles) > 1 and driver.current_window_handle != original_window:
+                        driver.close()
+                        driver.switch_to.window(original_window)
+                except:
+                    pass
+                return []
+                
+        except Exception as e:
+            self.log_and_update(f"  Error in process_color_variations for {product['product_id']}: {str(e)}")
+            return []
+
+    def extract_color_variation_products(self, driver, original_product):
+        """Extract all color variation products from the color variations page"""
+        try:
+            self.log_and_update(f"    Extracting color variation products...")
+            color_products = []
+            
+            # Look for product containers on the color variations page
+            product_containers = []
+            container_selectors = [
+                "table.productTable tbody tr",
+                "table.productTable tr",
+                ".product",
+                ".item",
+                ".result",
+                "[class*='product']",
+                "[class*='item']",
+                "[class*='result']"
+            ]
+            
+            for selector in container_selectors:
+                try:
+                    containers = driver.find_elements(By.CSS_SELECTOR, selector)
+                    if containers:
+                        filtered = []
+                        for container in containers:
+                            try:
+                                text_value = container.text
+                                if any(k in text_value for k in ['品番', '商品名', '商品図', 'Product']):
+                                    filtered.append(container)
+                            except Exception:
+                                continue
+                        if filtered:
+                            product_containers = filtered
+                            self.log_and_update(f"    Found {len(filtered)} color variation containers using selector: {selector}")
+                            break
+                except Exception as e:
+                    self.log_and_update(f"    Selector {selector} failed: {e}")
+            
+            if not product_containers:
+                self.log_and_update(f"    No color variation containers found")
+                return []
+            
+            # Extract product info for each color variation
+            for i, container in enumerate(product_containers):
+                try:
+                    self.log_and_update(f"    Extracting color variation {i+1}/{len(product_containers)}")
+                    color_product_info = self.extract_product_info(container, driver)
+                    
+                    if color_product_info:
+                        # Use the original product's name and series as base
+                        color_product_info['product_name'] = original_product.get('product_name', '')
+                        color_product_info['series'] = original_product.get('series', '')
+                        color_products.append(color_product_info)
+                        self.log_and_update(f"    Extracted color variation: {color_product_info['product_id']}")
+                    
+                except Exception as e:
+                    self.log_and_update(f"    Error extracting color variation {i+1}: {str(e)}")
+                    continue
+            
+            self.log_and_update(f"    Successfully extracted {len(color_products)} color variations")
+            return color_products
+            
+        except Exception as e:
+            self.log_and_update(f"    Error extracting color variation products: {str(e)}")
+            return []
+
     def extract_product_info(self, container, driver):
         """
         Extract product information from a container element,
@@ -590,9 +788,11 @@ class ComEtCrawler:
             product_name = "Unknown Product"
             diagram_link = None
             specs_link = None
+            bunkaizu_link = None
             product_images = [] 
             diagram_href = None
             specs_href = None
+            bunkaizu_href = None
             
             # Find the '品番' (product ID) link
             try:
@@ -622,6 +822,21 @@ class ComEtCrawler:
             if not product_id:
                 self.log_and_update("  Product ID is empty, skipping this container.")
                 return None
+
+            # Skip discontinued items (販売終了)
+            try:
+                self.log_and_update("  Checking 希望小売価格 for discontinued status...")
+                price_dd = container.find_element(
+                    By.XPATH,
+                    ".//dt[contains(text(), '希望小売価格')]/following-sibling::dd[contains(@class, 'price')]"
+                )
+                price_text = price_dd.text.strip()
+                self.log_and_update(f"  希望小売価格 text: {price_text}")
+                if "販売終了" in price_text:
+                    self.log_and_update("  Item marked as 販売終了. Skipping this item.")
+                    return None
+            except Exception as e:
+                self.log_and_update(f"  Could not determine discontinued status: {str(e)}")
             
             all_links_in_container = container.find_elements(By.TAG_NAME, "a")
             self.log_and_update(f"  Found {len(all_links_in_container)} links in total within the container.")
@@ -707,6 +922,20 @@ class ComEtCrawler:
             
             if not found_specs_link_to_use:
                 self.log_and_update("  No valid Specifications link found for this product.")
+
+            # --- 分解図 (Exploded Diagram) Link Selection Logic ---
+            self.log_and_update("  Searching for 分解図 link...")
+            try:
+                bunkaizu_candidates = container.find_elements(By.XPATH, ".//a[contains(., '分解図')]")
+                for link in bunkaizu_candidates:
+                    href = link.get_attribute('href')
+                    if href:
+                        bunkaizu_link = link
+                        bunkaizu_href = href
+                        self.log_and_update(f"    Found 分解図 link: {bunkaizu_href}")
+                        break
+            except Exception as e:
+                self.log_and_update(f"    Error finding 分解図 link: {str(e)}")
             
             # --- Product Images Selection Logic ---
             self.log_and_update("  Searching for product images...")
@@ -753,6 +982,8 @@ class ComEtCrawler:
                 'container': container,
                 'diagram_link': diagram_link,
                 'diagram_href': diagram_href,
+                'bunkaizu_link': bunkaizu_link,
+                'bunkaizu_href': bunkaizu_href,
                 'specs_link': specs_link,
                 'specs_href': specs_href,
                 'product_images': product_images, # List of images to download
@@ -848,20 +1079,43 @@ class ComEtCrawler:
                     self.log_and_update(f"  Error downloading diagram: {str(e)}")
             else:
                 self.log_and_update(f"  No 商品図 link found for {product['product_id']}.")
+
+            # 2b. Process 分解図 (Exploded Diagram) - only a.btn.md-pdfBtn
+            if product.get('bunkaizu_link') or product.get('bunkaizu_href'):
+                try:
+                    self.log_and_update(f"  分解図: Attempting to download for {product['product_id']}...")
+                    if self.handle_bunkaizu_download(driver, product, diagram_dir):
+                        downloaded_something = True
+                        self.log_and_update("  分解図 download completed successfully.")
+                    else:
+                        self.log_and_update("  分解図 download did not find eligible PDF.")
+                except Exception as e:
+                    self.log_and_update(f"  Error downloading 分解図: {str(e)}")
             
             # 3. Process 仕様一覧 (Specifications)
             if product.get('specs_link') or product.get('specs_href'):
                 try:
                     self.log_and_update(f"  Specifications (仕様一覧): Attempting to process for {product['product_id']}...")
-                    specs_html = self.extract_specifications(driver, product.get('specs_link'), product.get('specs_href'), product['product_id'])
-                    if specs_html:
-                        specs_file = os.path.join(product_dir, f"{product['product_id']}_specifications.html")
-                        with open(specs_file, 'w', encoding='utf-8') as f:
-                            f.write(specs_html)
-                        self.log_and_update(f"  Specifications saved: {specs_file}")
-                        downloaded_something = True
+                    specs_data = self.extract_specifications_data(driver, product.get('specs_link'), product.get('specs_href'), product['product_id'])
+                    if specs_data:
+                        # Generate template HTML with the extracted specifications data
+                        template_html = self.generate_template_html(
+                            specs_data, 
+                            product['product_id'], 
+                            product.get('product_name', ''), 
+                            self.extract_manufacturer_from_product_id(product['product_id']),
+                            self.extract_series_from_product_name(product.get('product_name', ''))
+                        )
+                        if template_html:
+                            specs_file = os.path.join(product_dir, f"{product['product_id']}_template.html")
+                            with open(specs_file, 'w', encoding='utf-8') as f:
+                                f.write(template_html)
+                            self.log_and_update(f"  Template HTML saved: {specs_file}")
+                            downloaded_something = True
+                        else:
+                            self.log_and_update("  Template HTML generation failed.")
                     else:
-                        self.log_and_update("  Specifications extraction failed.")
+                        self.log_and_update("  Specifications data extraction failed.")
                 except Exception as e:
                     self.log_and_update(f"  Error processing specifications: {str(e)}")
             else:
@@ -951,6 +1205,82 @@ class ComEtCrawler:
                     pass
         
         return downloaded
+
+    def handle_bunkaizu_download(self, driver, product, diagram_dir):
+        """Open 分解図 page and download only the a.btn.md-pdfBtn PDF."""
+        link_element = product.get('bunkaizu_link')
+        href = product.get('bunkaizu_href')
+        if not href and link_element:
+            try:
+                href = link_element.get_attribute('href')
+            except Exception:
+                href = None
+
+        if not (href or link_element):
+            self.log_and_update("  分解図: No link to follow.")
+            return False
+
+        original_window = driver.current_window_handle
+        try:
+            # Prefer clicking if element is present
+            if link_element:
+                try:
+                    driver.execute_script("arguments[0].scrollIntoView(true);", link_element)
+                    time.sleep(0.5)
+                    existing_handles = set(driver.window_handles)
+                    link_element.click()
+                    time.sleep(2)
+                    new_handles = list(set(driver.window_handles) - existing_handles)
+                    if new_handles:
+                        driver.switch_to.window(new_handles[0])
+                        self.log_and_update("  分解図 page opened in new tab.")
+                    else:
+                        self.log_and_update("  分解図 opened in same tab.")
+                except Exception as e:
+                    self.log_and_update(f"  分解図 click failed, trying direct get: {str(e)}")
+                    if href:
+                        driver.get(href)
+                        time.sleep(2)
+            else:
+                driver.get(href)
+                time.sleep(2)
+
+            # Wait for md-pdfBtn presence
+            try:
+                WebDriverWait(driver, 10).until(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, "a.btn.md-pdfBtn"))
+                )
+            except Exception:
+                self.log_and_update("  分解図: No a.btn.md-pdfBtn found.")
+                return False
+
+            pdf_links = driver.find_elements(By.CSS_SELECTOR, "a.btn.md-pdfBtn")
+            self.log_and_update(f"  分解図: Found {len(pdf_links)} md-pdfBtn links.")
+            downloaded_any = False
+            for i, a in enumerate(pdf_links):
+                try:
+                    href = a.get_attribute('href')
+                    if not href:
+                        continue
+                    self.log_and_update(f"  分解図: Downloading PDF {i+1}: {href}")
+                    if self.download_file(href, diagram_dir):
+                        downloaded_any = True
+                except Exception as e:
+                    self.log_and_update(f"  分解図: Failed to download one PDF: {str(e)}")
+                    continue
+
+            return downloaded_any
+        finally:
+            try:
+                if driver.current_window_handle != original_window and original_window in driver.window_handles:
+                    driver.close()
+                    driver.switch_to.window(original_window)
+            except Exception:
+                try:
+                    if original_window in driver.window_handles:
+                        driver.switch_to.window(original_window)
+                except Exception:
+                    pass
 
     def download_from_current_page(self, driver, diagram_dir, pdf_only=False, single_file=False):
         """Download diagrams from the current page."""
@@ -1064,9 +1394,9 @@ class ComEtCrawler:
             self.log_and_update(f"    Error in Selenium download: {str(e)}")
             return None
 
-    def extract_specifications(self, driver, specs_link, specs_href, product_id):
-        """Extract specifications table and convert to Rakuten HTML format"""
-        self.log_and_update("  Starting specifications extraction process.")
+    def extract_specifications_data(self, driver, specs_link, specs_href, product_id):
+        """Extract specifications table data and return as structured data"""
+        self.log_and_update("  Starting specifications data extraction process.")
         original_window = driver.current_window_handle
         try:
             # Click the specifications link
@@ -1127,17 +1457,16 @@ class ComEtCrawler:
             
             table_data = self.extract_table_data(specs_table)
             self.log_and_update(f"    Extracted {len(table_data)} rows of table data.")
-            rakuten_html = self.generate_rakuten_html(table_data, product_id)
             
             if len(driver.window_handles) > 1 and driver.current_window_handle != original_window:
                 self.log_and_update("    Closing new window and returning to original.")
                 driver.close()
                 driver.switch_to.window(original_window)
             
-            return rakuten_html
+            return table_data
             
         except Exception as e:
-            self.log_and_update(f"    Error extracting specifications: {str(e)}")
+            self.log_and_update(f"    Error extracting specifications data: {str(e)}")
             try:
                 if len(driver.window_handles) > 1 and driver.current_window_handle != original_window:
                     self.log_and_update("    Error occurred, but attempting to close new window and return to original.")
@@ -1147,36 +1476,80 @@ class ComEtCrawler:
                 pass
             return None
 
+    def extract_manufacturer_from_product_id(self, product_id):
+        """Extract manufacturer name from product ID"""
+        try:
+            if product_id.startswith('TCF') or product_id.startswith('TCA'):
+                return "TOTO（トートー）"
+            elif product_id.startswith('LIXIL') or product_id.startswith('INAX'):
+                return "LIXIL（リクシル）"
+            elif product_id.startswith('TOTO'):
+                return "TOTO（トートー）"
+            else:
+                return "Unknown Manufacturer"
+        except Exception:
+            return "Unknown Manufacturer"
+
+    def extract_series_from_product_name(self, product_name):
+        """Extract series information from product name"""
+        try:
+            if not product_name:
+                return "Unknown Series"
+            
+            # Look for common series patterns
+            if "アプリコット" in product_name:
+                return "アプリコットシリーズ"
+            elif "ネオレスト" in product_name:
+                return "ネオレストシリーズ"
+            elif "サティス" in product_name:
+                return "サティスシリーズ"
+            elif "パブリック" in product_name:
+                return "パブリック向ウォシュレット"
+            else:
+                return "Unknown Series"
+        except Exception:
+            return "Unknown Series"
+
     def extract_table_data(self, table_element):
-        """Extract data from specifications table with 3-column structure"""
-        self.log_and_update("      Extracting table data...")
+        """Extract table data exactly as it appears row by row, column by column"""
+        self.log_and_update("      Extracting table data row by row...")
         table_data = []
         try:
             rows = table_element.find_elements(By.TAG_NAME, "tr")
-            current_section = ""
+            
             for i, row in enumerate(rows):
                 try:
-                    headers = row.find_elements(By.TAG_NAME, "th")
-                    cells = row.find_elements(By.TAG_NAME, "td")
+                    # Get all th and td elements in this row
+                    all_cells = row.find_elements(By.TAG_NAME, "th") + row.find_elements(By.TAG_NAME, "td")
                     
-                    if headers and len(cells) == 0:
-                        current_section = headers[0].text.strip()
-                        self.log_and_update(f"      - Found new section header: {current_section}")
-                    elif headers and cells:
-                        item_name = headers[0].text.strip()
+                    if not all_cells:
+                        continue
+                    
+                    # Extract text from each cell
+                    row_data = []
+                    for cell in all_cells:
+                        cell_text = cell.text.strip()
+                        rowspan = cell.get_attribute("rowspan")
+                        colspan = cell.get_attribute("colspan")
+                        cell_type = cell.tag_name
                         
-                        if len(cells) >= 1:
-                            primary_value = cells[0].text.strip()
-                            secondary_value = cells[1].text.strip() if len(cells) > 1 else ""
-                            
-                            if item_name and (primary_value or secondary_value):
-                                table_data.append({
-                                    'section': current_section, 
-                                    'item': item_name, 
-                                    'primary_value': primary_value,
-                                    'secondary_value': secondary_value
-                                })
-                                self.log_and_update(f"      - Extracted row: {item_name} | {primary_value} | {secondary_value}")
+                        row_data.append({
+                            'text': cell_text,
+                            'rowspan': int(rowspan) if rowspan else 1,
+                            'colspan': int(colspan) if colspan else 1,
+                            'type': cell_type
+                        })
+                    
+                    # Store the complete row data
+                    table_data.append({
+                        'row_index': i,
+                        'cells': row_data
+                    })
+                    
+                    self.log_and_update(f"      - Row {i}: {len(row_data)} cells")
+                    for j, cell in enumerate(row_data):
+                        self.log_and_update(f"        Cell {j}: '{cell['text']}' ({cell['type']}, rowspan={cell['rowspan']}, colspan={cell['colspan']})")
+                
                 except Exception as e:
                     self.log_and_update(f"      - Error processing table row {i}: {str(e)}")
                     continue
@@ -1253,6 +1626,216 @@ class ComEtCrawler:
         except Exception as e:
             self.log_and_update(f"      Error generating Rakuten HTML: {str(e)}")
             return None
+
+    def generate_template_html(self, table_data, product_id, product_name="", manufacturer="", series=""):
+        """Generate HTML following the template structure with product-specific information"""
+        self.log_and_update("      Generating template HTML...")
+        try:
+            # Extract manufacturer from product_id if not provided
+            if not manufacturer:
+                if product_id.startswith('TCF') or product_id.startswith('TCA'):
+                    manufacturer = "TOTO（トートー）"
+                else:
+                    manufacturer = "Unknown Manufacturer"
+            
+            # Format product ID with color name if available
+            formatted_product_id = self.format_product_id_with_color(product_id)
+            
+            # Generate specifications table HTML
+            specs_table_html = self.generate_specs_table_html(table_data)
+            
+            # Generate features HTML
+            features_html = self.generate_features_html(table_data)
+            
+            html_content = f"""<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Document</title>
+</head>
+
+<body>
+
+  <!--  
+コメット　
+商品番号　{product_id}
+https://www.com-et.com/jp/item_color_search/searchStr={product_id.replace('#', '%23')}/isHaiban=1/kensaku_info=2/hinban={product_id.split('#')[0]}/renban=1/isFromScale=0/isNC=1/datatype=1/
+-->
+
+
+  <!-- ●●●●● コメットから情報取得 -->
+  <br>
+  <br>
+  <font size="+1">
+    <b>
+      メーカー：{manufacturer}
+      <br>
+      品&nbsp;&nbsp;番&nbsp;&nbsp;&nbsp;：◆{formatted_product_id}
+      <br>
+      商&nbsp;品&nbsp;名&nbsp;：{product_name if product_name else 'Unknown Product'}
+      <br>
+      シリーズ：{series if series else 'Unknown Series'}
+      <br>
+    </b>
+  </font>
+  <br>
+  <br>
+  <!-- /// ●●●●● コメットから情報取得 -->
+
+
+  <!-- ◆◆◆　定型文 -->
+  ※商品画像・カラーは、イメージです。
+  <br>
+  ※詳しい施工方法や商品詳細については、カタログやメーカー様にてご確認ください。
+  <br>
+  <!-- ◆◆◆　ここに納期等入れる -->
+  <br>
+  <!-- /// ◆◆◆　定型文 -->
+
+
+  <!-- ●●●●● コメットから情報取得 ●●●●● 構成品 -->
+  【 セット品番 ：{formatted_product_id} 】
+  <br>
+  <br>{formatted_product_id}
+  <br>
+  -------------------------------------------------------
+  <br>
+  構成品番 ： ◆{formatted_product_id}
+  <br>
+  商品名 ： {product_name if product_name else 'Unknown Product'}
+  <br>
+  -------------------------------------------------------
+  <br>
+  <br>
+  <!-- /// コメットから情報取得 ●●●●● 構成品 -->
+
+
+  <!-- ●●●●● コメットから情報取得 ●●●●● 仕様一覧 -->
+  【 仕様 】
+  <br>
+{specs_table_html}
+  <br><br>
+  【 仕様 】
+{features_html}
+  <!-- /// コメットから情報取得 ●●●●● 仕様一覧 -->
+
+
+
+
+</html>"""
+            
+            self.log_and_update("      Template HTML generated successfully.")
+            return html_content
+        except Exception as e:
+            self.log_and_update(f"      Error generating template HTML: {str(e)}")
+            return None
+
+    def generate_specs_table_html(self, table_data):
+        """Generate the specifications table HTML exactly as the original table structure"""
+        try:
+            html = """  <table bgcolor="#000000" cellspacing="1" cellpadding="3">
+
+"""
+            
+            # Process each row exactly as it appears in the original table
+            for row_data in table_data:
+                cells = row_data['cells']
+                
+                if not cells:
+                    continue
+                
+                # Start the table row
+                html += "    <tr>\n"
+                
+                # Process each cell in the row
+                for cell in cells:
+                    cell_text = cell['text'].replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                    rowspan = cell['rowspan']
+                    colspan = cell['colspan']
+                    cell_type = cell['type']
+                    
+                    # Determine alignment and background color based on cell type
+                    if cell_type == 'th':
+                        bgcolor = "#F5F5F5"
+                        align = "left"
+                    else:
+                        bgcolor = "#FFFFFF"
+                        align = "left"
+                    
+                    # Build the cell attributes
+                    attributes = f'align="{align}" bgcolor="{bgcolor}"'
+                    if rowspan > 1:
+                        attributes += f' rowspan="{rowspan}"'
+                    if colspan > 1:
+                        attributes += f' colspan="{colspan}"'
+                    
+                    # Add the cell
+                    html += f"      <{cell_type} {attributes}>{cell_text}</{cell_type}>\n"
+                
+                # Close the table row
+                html += "    </tr>\n\n"
+            
+            html += "  </table>"
+            return html
+        except Exception as e:
+            self.log_and_update(f"      Error generating specs table HTML: {str(e)}")
+            return "  <table bgcolor=\"#000000\" cellspacing=\"1\" cellpadding=\"3\">\n  </table>"
+
+    def generate_features_html(self, table_data):
+        """Generate the features section HTML following the template format"""
+        try:
+            # Extract features from the table data
+            cleaning_features = []
+            comfort_features = []
+            eco_features = []
+            hygiene_features = []
+            
+            # Process each row to extract features
+            for row_data in table_data:
+                cells = row_data['cells']
+                
+                # Look for feature-related items in the table
+                for i, cell in enumerate(cells):
+                    if cell['type'] == 'th' and cell['text']:
+                        item_name = cell['text']
+                        
+                        # Get the corresponding value from the next cell
+                        value = ""
+                        if i + 1 < len(cells) and cells[i + 1]['type'] == 'td':
+                            value = cells[i + 1]['text']
+                        
+                        # Categorize based on item names
+                        if any(keyword in item_name for keyword in ['洗浄', '水勢', 'ビデ', 'おしり']):
+                            if value and value != "-":
+                                cleaning_features.append(f"・{value}")
+                        elif any(keyword in item_name for keyword in ['暖房', '脱臭', 'リモコン', 'センサ', '音姫', '電子音']):
+                            if value and value != "-":
+                                comfort_features.append(f"・{value}")
+                        elif any(keyword in item_name for keyword in ['節電', 'オフ', 'エコ']):
+                            if value and value != "-":
+                                eco_features.append(f"・{value}")
+                        elif any(keyword in item_name for keyword in ['ノズル', '抗菌', 'クリーニング', 'クリーン', '便器', '便座']):
+                            if value and value != "-":
+                                hygiene_features.append(f"・{value}")
+            
+            html = ""
+            
+            if cleaning_features:
+                html += "  <br><b>洗浄機能</b><br>" + "<br>".join(cleaning_features[:5])  # Limit to 5 features
+            if comfort_features:
+                html += "<br><b>快適機能</b><br>" + "<br>".join(comfort_features[:10])  # Limit to 10 features
+            if eco_features:
+                html += "<br><b>エコ機能</b><br>" + "<br>".join(eco_features[:5])  # Limit to 5 features
+            if hygiene_features:
+                html += "<br><b>清潔機能</b><br>" + "<br>".join(hygiene_features[:10])  # Limit to 10 features
+            
+            return html
+        except Exception as e:
+            self.log_and_update(f"      Error generating features HTML: {str(e)}")
+            return ""
 
     def download_direct_link(self, diagram, product_id):
         """Download a diagram from a direct link"""

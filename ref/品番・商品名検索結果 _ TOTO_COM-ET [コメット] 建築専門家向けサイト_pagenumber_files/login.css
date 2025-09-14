@@ -1,0 +1,63 @@
+@charset "utf-8";
+/**********************************************
+TOTO コメット
+ログインページ　CSS
+***********************************************/
+
+/*============================================================
+  ログイン画面
+============================================================*/
+.loginArea dl {
+	text-align: center;
+}
+.loginArea dt,
+.loginArea dd {
+	display:inline-block;
+	*display:inline;
+	*zoom:1;
+	vertical-align: top;
+	text-align: left;
+}
+.loginArea dt {
+	width: 170px;
+	height: 36px;
+	line-height: 36px;
+}
+.loginArea dd input {
+	width: 300px;
+}
+.loginArea dd input.error {
+	border: 2px solid #cb2b00;
+}
+.loginArea .keep {
+	margin: 20px 0 0;
+}
+.loginArea .keep input {
+	width: auto;
+	margin-right: 8px;
+}
+.loginArea .remainderLink {
+	text-align: center;
+	margin: 0 0 20px;
+}
+.loginArea .remainderLink a {
+	color: #1152b2;
+	font-size: 86.66%;
+}
+
+.notMember ul {
+	overflow:hidden;
+	*zoom:1;
+	margin: 0 -20px 20px 0;
+}
+.notMember li {
+	float: left;
+	margin: 0 20px 0 0;
+}
+/*============================================================
+  ログアウト完了
+============================================================*/
+.pageLogout .logoutMessage {
+	margin: 0;
+	line-height: 90px;
+}

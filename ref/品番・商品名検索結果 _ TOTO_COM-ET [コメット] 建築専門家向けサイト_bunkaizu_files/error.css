@@ -1,0 +1,22 @@
+@charset "utf-8";
+/**********************************************
+TOTO コメット
+エラーページ　CSS
+***********************************************/
+.error .frame {
+	height: 300px;
+}
+.error .frame .inner {
+	display: inline-block;
+	*zoom:1;
+	text-align: left;
+}
+.error .message {
+	font-weight: bold;
+	font-size: 133.33%;
+	margin: 0 0 20px;
+}
+.error .links li {
+	background: url(../../img/default/icon/arrow05.png) 0 7px no-repeat;
+	padding-left: 10px;
+}
