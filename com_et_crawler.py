@@ -955,15 +955,38 @@ class ComEtCrawler:
             self.log_and_update("  Searching for 構成品 link...")
             component_link = None
             component_href = None
+            has_components = False
             try:
+                # First check for clickable 構成品 links
                 component_candidates = container.find_elements(By.XPATH, ".//a[contains(., '構成品')]")
                 for link in component_candidates:
                     href = link.get_attribute('href')
                     if href and "item_view_set" in href:
                         component_link = link
                         component_href = href
-                        self.log_and_update(f"    Found 構成品 link: {component_href}")
+                        has_components = True
+                        self.log_and_update(f"    Found clickable 構成品 link: {component_href}")
                         break
+                
+                # If no clickable link found, check for disabled 構成品 elements
+                if not has_components:
+                    disabled_components = container.find_elements(By.XPATH, ".//span[contains(@class, 'productLabels_disabled') and contains(., '構成品')]")
+                    if disabled_components:
+                        self.log_and_update("    Found disabled 構成品 element - no components available")
+                        has_components = False
+                    else:
+                        # Check for any 構成品 text that might indicate components exist
+                        component_text_elements = container.find_elements(By.XPATH, ".//*[contains(., '構成品')]")
+                        for elem in component_text_elements:
+                            if elem.tag_name == 'a' and elem.get_attribute('href'):
+                                # This is a clickable link we might have missed
+                                href = elem.get_attribute('href')
+                                if "item_view_set" in href:
+                                    component_link = elem
+                                    component_href = href
+                                    has_components = True
+                                    self.log_and_update(f"    Found additional 構成品 link: {component_href}")
+                                    break
             except Exception as e:
                 self.log_and_update(f"    Error finding 構成品 link: {str(e)}")
             
@@ -1019,6 +1042,7 @@ class ComEtCrawler:
                 'specs_href': specs_href,
                 'component_link': component_link,
                 'component_href': component_href,
+                'has_components': has_components,
                 'product_images': product_images, # List of images to download
                 'container_text': container.text # Use container.text to get all text
             }
@@ -1128,10 +1152,11 @@ class ComEtCrawler:
             # 3. Process 構成品 (Components)
             components_data = None
             self.log_and_update(f"  Checking for component data for {product['product_id']}...")
+            self.log_and_update(f"    has_components: {product.get('has_components')}")
             self.log_and_update(f"    component_link: {product.get('component_link')}")
             self.log_and_update(f"    component_href: {product.get('component_href')}")
             
-            if product.get('component_link') or product.get('component_href'):
+            if product.get('has_components') and (product.get('component_link') or product.get('component_href')):
                 try:
                     self.log_and_update(f"  Components (構成品): Attempting to process for {product['product_id']}...")
                     components_data = self.extract_component_data(driver, product.get('component_link'), product.get('component_href'), product['product_id'])
@@ -1144,7 +1169,10 @@ class ComEtCrawler:
                 except Exception as e:
                     self.log_and_update(f"  Error processing components: {str(e)}")
             else:
-                self.log_and_update("  No component link or href found for this product.")
+                if not product.get('has_components'):
+                    self.log_and_update("  Product has no components available (構成品 is disabled).")
+                else:
+                    self.log_and_update("  No component link or href found for this product.")
             
             # 4. Process 仕様一覧 (Specifications)
             if product.get('specs_link') or product.get('specs_href'):
@@ -1159,7 +1187,8 @@ class ComEtCrawler:
                             product.get('product_name', ''), 
                             self.extract_manufacturer_from_product_id(product['product_id']),
                             product.get('series_name', ''),
-                            components_data
+                            components_data,
+                            product.get('has_components', False)
                         )
                         if template_html:
                             specs_file = os.path.join(product_dir, f"{product['product_id']}_template.html")
@@ -2056,7 +2085,7 @@ class ComEtCrawler:
             self.log_and_update(f"      Error generating Rakuten HTML: {str(e)}")
             return None
 
-    def generate_template_html(self, specs_data, product_id, product_name="", manufacturer="", series="", components=None):
+    def generate_template_html(self, specs_data, product_id, product_name="", manufacturer="", series="", components=None, has_components=False):
         """Generate HTML following the template structure with product-specific information"""
         self.log_and_update("      Generating template HTML...")
         try:
@@ -2086,7 +2115,7 @@ class ComEtCrawler:
             features_html = self.generate_features_html(features_data)
             
             # Generate component HTML
-            component_html = self.generate_component_html(components, formatted_product_id, product_name)
+            component_html = self.generate_component_html(components, formatted_product_id, product_name, has_components)
             
             html_content = f"""<!DOCTYPE html>
 <html lang="en">
@@ -2215,11 +2244,15 @@ https://www.com-et.com/jp/item_color_search/searchStr={product_id.replace('#', '
             self.log_and_update(f"      Error generating specs table HTML: {str(e)}")
             return "  <table bgcolor=\"#000000\" cellspacing=\"1\" cellpadding=\"3\">\n  </table>"
 
-    def generate_component_html(self, components, formatted_product_id, product_name):
+    def generate_component_html(self, components, formatted_product_id, product_name, has_components=False):
         """Generate the component section HTML following the template format"""
         try:
+            # If product doesn't have components available, don't generate セット品番 section
+            if not has_components:
+                return ""
+            
             if not components:
-                # Fallback to original structure if no components found
+                # Fallback to original structure if no components found but components are available
                 return f"""  【 セット品番 ：{formatted_product_id} 】
   <br>
   <br>{formatted_product_id}
@@ -2271,8 +2304,9 @@ https://www.com-et.com/jp/item_color_search/searchStr={product_id.replace('#', '
             
         except Exception as e:
             self.log_and_update(f"      Error generating component HTML: {str(e)}")
-            # Return fallback HTML
-            return f"""  【 セット品番 ：{formatted_product_id} 】
+            # Return fallback HTML only if components are available
+            if has_components:
+                return f"""  【 セット品番 ：{formatted_product_id} 】
   <br>
   <br>{formatted_product_id}
   <br>
@@ -2285,6 +2319,8 @@ https://www.com-et.com/jp/item_color_search/searchStr={product_id.replace('#', '
   -------------------------------------------------------
   <br>
   <br>"""
+            else:
+                return ""
 
     def generate_features_html(self, features_data):
         """Generate the features section HTML following the template format"""
