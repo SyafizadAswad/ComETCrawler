@@ -1174,36 +1174,43 @@ class ComEtCrawler:
                 else:
                     self.log_and_update("  No component link or href found for this product.")
             
-            # 4. Process 仕様一覧 (Specifications)
+            # 4. Process 仕様一覧 (Specifications) or create basic HTML
+            specs_data = None
             if product.get('specs_link') or product.get('specs_href'):
                 try:
                     self.log_and_update(f"  Specifications (仕様一覧): Attempting to process for {product['product_id']}...")
                     specs_data = self.extract_specifications_data(driver, product.get('specs_link'), product.get('specs_href'), product['product_id'])
                     if specs_data:
-                        # Generate template HTML with the extracted specifications data and components
-                        template_html = self.generate_template_html(
-                            specs_data,
-                            product['product_id'], 
-                            product.get('product_name', ''), 
-                            self.extract_manufacturer_from_product_id(product['product_id']),
-                            product.get('series_name', ''),
-                            components_data,
-                            product.get('has_components', False)
-                        )
-                        if template_html:
-                            specs_file = os.path.join(product_dir, f"{product['product_id']}_template.html")
-                            with open(specs_file, 'w', encoding='utf-8') as f:
-                                f.write(template_html)
-                            self.log_and_update(f"  Template HTML saved: {specs_file}")
-                            downloaded_something = True
-                        else:
-                            self.log_and_update("  Template HTML generation failed.")
+                        self.log_and_update(f"  Found specifications data for {product['product_id']}")
                     else:
                         self.log_and_update("  Specifications data extraction failed.")
                 except Exception as e:
                     self.log_and_update(f"  Error processing specifications: {str(e)}")
             else:
-                self.log_and_update(f"  No 仕様一覧 link found for {product['product_id']}.")
+                self.log_and_update(f"  No 仕様一覧 link found for {product['product_id']} - will create basic HTML.")
+            
+            # Generate template HTML (with or without specifications data)
+            try:
+                self.log_and_update(f"  Generating template HTML for {product['product_id']}...")
+                template_html = self.generate_template_html(
+                    specs_data,
+                    product['product_id'], 
+                    product.get('product_name', ''), 
+                    self.extract_manufacturer_from_product_id(product['product_id']),
+                    product.get('series_name', ''),
+                    components_data,
+                    product.get('has_components', False)
+                )
+                if template_html:
+                    specs_file = os.path.join(product_dir, f"{product['product_id']}_template.html")
+                    with open(specs_file, 'w', encoding='utf-8') as f:
+                        f.write(template_html)
+                    self.log_and_update(f"  Template HTML saved: {specs_file}")
+                    downloaded_something = True
+                else:
+                    self.log_and_update("  Template HTML generation failed.")
+            except Exception as e:
+                self.log_and_update(f"  Error generating template HTML: {str(e)}")
             
             # Ensure we return to the original window (search results page)
             try:
@@ -2100,7 +2107,11 @@ class ComEtCrawler:
             formatted_product_id = self.format_product_id_with_color(product_id)
             
             # Handle both old format (table_data) and new format (specs_data dict)
-            if isinstance(specs_data, dict):
+            if specs_data is None:
+                # No specifications data available
+                table_data = []
+                features_data = {}
+            elif isinstance(specs_data, dict):
                 table_data = specs_data.get('table_data', [])
                 features_data = specs_data.get('features_data', {})
             else:
@@ -2116,6 +2127,9 @@ class ComEtCrawler:
             
             # Generate component HTML
             component_html = self.generate_component_html(components, formatted_product_id, product_name, has_components)
+            
+            # Generate specifications section HTML (only if there's data)
+            specs_section_html = self.generate_specs_section_html(specs_table_html, features_html, table_data, features_data)
             
             html_content = f"""<!DOCTYPE html>
 <html lang="en">
@@ -2174,12 +2188,7 @@ https://www.com-et.com/jp/item_color_search/searchStr={product_id.replace('#', '
 
 
   <!-- ●●●●● コメットから情報取得 ●●●●● 仕様一覧 -->
-  【 仕様 】
-  <br>
-{specs_table_html}
-  <br><br>
-  【 仕様 】
-{features_html}
+{specs_section_html}
   <!-- /// コメットから情報取得 ●●●●● 仕様一覧 -->
 
 
@@ -2321,6 +2330,42 @@ https://www.com-et.com/jp/item_color_search/searchStr={product_id.replace('#', '
   <br>"""
             else:
                 return ""
+
+    def generate_specs_section_html(self, specs_table_html, features_html, table_data, features_data):
+        """Generate the specifications section HTML only if there's actual data"""
+        try:
+            # Check if there's any meaningful specifications data
+            has_table_data = table_data and len(table_data) > 0
+            has_features_data = features_data and len(features_data) > 0
+            
+            # If no specifications data, return empty string
+            if not has_table_data and not has_features_data:
+                return ""
+            
+            # Build the specifications section
+            specs_section_parts = []
+            
+            # Add table section if there's table data
+            if has_table_data:
+                specs_section_parts.extend([
+                    "  【 仕様 】",
+                    "  <br>",
+                    specs_table_html,
+                    "  <br><br>"
+                ])
+            
+            # Add features section if there's features data
+            if has_features_data:
+                specs_section_parts.extend([
+                    "  【 仕様 】",
+                    features_html
+                ])
+            
+            return "\n".join(specs_section_parts)
+            
+        except Exception as e:
+            self.log_and_update(f"      Error generating specs section HTML: {str(e)}")
+            return ""
 
     def generate_features_html(self, features_data):
         """Generate the features section HTML following the template format"""
