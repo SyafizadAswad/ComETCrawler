@@ -968,12 +968,13 @@ class ComEtCrawler:
                         self.log_and_update(f"    Found clickable 構成品 link: {component_href}")
                         break
                 
-                # If no clickable link found, check for disabled 構成品 elements
+                # If no clickable link found, check for any 構成品 text presence
                 if not has_components:
+                    # Check for disabled 構成品 elements first
                     disabled_components = container.find_elements(By.XPATH, ".//span[contains(@class, 'productLabels_disabled') and contains(., '構成品')]")
                     if disabled_components:
-                        self.log_and_update("    Found disabled 構成品 element - no components available")
-                        has_components = False
+                        self.log_and_update("    Found disabled 構成品 element - components exist but not clickable")
+                        has_components = True  # Set to True even if disabled, so セット品番 is included
                     else:
                         # Check for any 構成品 text that might indicate components exist
                         component_text_elements = container.find_elements(By.XPATH, ".//*[contains(., '構成品')]")
@@ -987,6 +988,11 @@ class ComEtCrawler:
                                     has_components = True
                                     self.log_and_update(f"    Found additional 構成品 link: {component_href}")
                                     break
+                            elif elem.tag_name != 'a' and '構成品' in elem.text:
+                                # Found 構成品 text in non-link element, components likely exist
+                                has_components = True
+                                self.log_and_update("    Found 構成品 text - components exist but may not be clickable")
+                                break
             except Exception as e:
                 self.log_and_update(f"    Error finding 構成品 link: {str(e)}")
             
