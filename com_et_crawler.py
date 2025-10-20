@@ -1963,6 +1963,8 @@ class ComEtCrawler:
                                                 if "<" in component_id:
                                                     import re
                                                     component_id = re.sub(r'<[^>]+>', '', component_id)
+                                                # Remove diamond symbol if present
+                                                component_id = component_id.replace("◆", "").strip()
                                                 self.log_and_update(f"            Extracted component ID: {component_id}")
                                                 
                                             elif "商品名" in dt_text:
@@ -2026,6 +2028,8 @@ class ComEtCrawler:
                                         else:
                                             # Component ID might be in the same cell after the label
                                             component_id = text.split("：")[-1].strip() if "：" in text else text.split(":")[-1].strip()
+                                        # Remove diamond symbol if present
+                                        component_id = component_id.replace("◆", "").strip()
                                         self.log_and_update(f"        Extracted component ID: {component_id}")
                                         break
                                 
@@ -2069,137 +2073,155 @@ class ComEtCrawler:
                 self.log_and_update(f"  Found {len(components)} components in tables, but trying alternative methods for better extraction...")
             
             try:
-                    # Method 1: Look for elements containing component information
-                    component_elements = driver.find_elements(By.XPATH, "//*[contains(text(), '構成品番') or contains(text(), '品番')]")
-                    self.log_and_update(f"  Found {len(component_elements)} elements with component information.")
-                    
-                    for element in component_elements:
-                        try:
-                            # Get the parent element to find related information
-                            parent = element.find_element(By.XPATH, "./..")
-                            text_content = parent.text
-                            self.log_and_update(f"    Element text content: {text_content[:200]}...")
-                            
-                            # Extract component ID and name using regex
-                            import re
-                            
-                            # Look for component ID patterns
-                            component_id_match = re.search(r'構成品番[：:]\s*([^\s\n]+)', text_content)
-                            if not component_id_match:
-                                component_id_match = re.search(r'品番[：:]\s*([^\s\n]+)', text_content)
-                            
-                            # Look for component name patterns - be more flexible with the pattern
-                            component_name_match = re.search(r'商品名[：:]\s*([^\n\r]+?)(?=\n|$|構成品番|品番)', text_content)
-                            if not component_name_match:
-                                component_name_match = re.search(r'名称[：:]\s*([^\n\r]+?)(?=\n|$|構成品番|品番)', text_content)
-                            if not component_name_match:
-                                # Try without colon
-                                component_name_match = re.search(r'商品名\s+([^\n\r]+?)(?=\n|$|構成品番|品番)', text_content)
-                            if not component_name_match:
-                                component_name_match = re.search(r'名称\s+([^\n\r]+?)(?=\n|$|構成品番|品番)', text_content)
-                            
-                            if component_id_match and component_name_match:
-                                component_id = component_id_match.group(1).strip()
-                                component_name = component_name_match.group(1).strip()
-                                
-                                components.append({
-                                    'component_id': component_id,
-                                    'component_name': component_name
-                                })
-                                self.log_and_update(f"    Found component via regex: {component_id} - {component_name}")
-                                
-                        except Exception as e:
-                            self.log_and_update(f"    Error processing component element: {str(e)}")
-                            continue
-                    
-                    # Method 2: Specific regex for setPartsBox_content structure
-                    self.log_and_update("  Trying specific regex for setPartsBox_content structure...")
-                    
-                    # Look for patterns like: 構成品番：ID followed by 商品名：Name within partsSet structure
-                    parts_set_pattern = r'構成品番[：:]\s*([^\s\n]+).*?商品名[：:]\s*([^\n\r]+?)(?=\n|$|構成品番|品番|希望小売価格)'
-                    parts_set_matches = re.findall(parts_set_pattern, page_text, re.DOTALL)
-                    self.log_and_update(f"  Found {len(parts_set_matches)} partsSet matches: {parts_set_matches}")
-                    
-                    for comp_id, comp_name in parts_set_matches:
-                        comp_id = comp_id.strip()
-                        comp_name = comp_name.strip()
-                        if comp_id and comp_name:
-                            # Check if this component is already in the list
-                            existing_component = next((comp for comp in components if comp['component_id'] == comp_id), None)
-                            if not existing_component:
-                                components.append({
-                                    'component_id': comp_id,
-                                    'component_name': comp_name
-                                })
-                                self.log_and_update(f"    Added component from partsSet regex: {comp_id} - {comp_name}")
-                            else:
-                                self.log_and_update(f"    Component {comp_id} already exists, skipping")
-                    
-                    # Method 3: Comprehensive text pattern search using the full page text
-                    self.log_and_update("  Trying comprehensive text pattern search...")
-                    # Use the page_text we already extracted for debugging
-                    self.log_and_update(f"  Using page text length: {len(page_text)} characters")
-                    
-                    # Look for patterns like "TCA573" or "TCF5831" (component IDs)
-                    import re
-                    component_id_patterns = re.findall(r'\b(TCA\d+[A-Z0-9#]*|TCF\d+[A-Z0-9#]*)\b', page_text)
-                    self.log_and_update(f"  Found potential component IDs: {component_id_patterns}")
-                    
-                    # Method 3a: Try to find all component blocks using a more comprehensive pattern
-                    self.log_and_update("  Trying comprehensive component block extraction...")
-                    # Look for patterns like: 構成品番：ID followed by 商品名：Name
-                    component_blocks = re.findall(r'構成品番[：:]\s*([^\s\n]+).*?商品名[：:]\s*([^\n\r]+?)(?=\n|$|構成品番|品番)', page_text, re.DOTALL)
-                    self.log_and_update(f"  Found {len(component_blocks)} component blocks: {component_blocks}")
-                    
-                    for comp_id, comp_name in component_blocks:
-                        comp_name = comp_name.strip()
-                        if comp_id and comp_name:
-                            # Check if this component is already in the list
-                            existing_component = next((comp for comp in components if comp['component_id'] == comp_id), None)
-                            if not existing_component:
-                                components.append({
-                                    'component_id': comp_id,
-                                    'component_name': comp_name
-                                })
-                                self.log_and_update(f"    Added component from block: {comp_id} - {comp_name}")
-                            else:
-                                self.log_and_update(f"    Component {comp_id} already exists, skipping")
-                    
-                    # Method 3b: For each potential component ID, try to find associated product name
-                    for comp_id in component_id_patterns:
-                        # Look for structured patterns around this component ID
-                        # Pattern: 構成品番：ID followed by 商品名：Name
-                        structured_pattern = rf'構成品番[：:]\s*{re.escape(comp_id)}.*?商品名[：:]\s*([^\n\r]+?)(?=\n|$|構成品番|品番)'
-                        structured_match = re.search(structured_pattern, page_text, re.DOTALL)
+                    # Method 1: Look for elements containing component information (only if no components found)
+                    if not components:
+                        component_elements = driver.find_elements(By.XPATH, "//*[contains(text(), '構成品番') or contains(text(), '品番')]")
+                        self.log_and_update(f"  Found {len(component_elements)} elements with component information.")
                         
-                        if structured_match:
-                            component_name = structured_match.group(1).strip()
-                            # Check if this component is already in the list
-                            existing_component = next((comp for comp in components if comp['component_id'] == comp_id), None)
-                            if not existing_component:
-                                components.append({
-                                    'component_id': comp_id,
-                                    'component_name': component_name
-                                })
-                                self.log_and_update(f"    Found component via structured pattern: {comp_id} - {component_name}")
+                        for element in component_elements:
+                            try:
+                                # Get the parent element to find related information
+                                parent = element.find_element(By.XPATH, "./..")
+                                text_content = parent.text
+                                self.log_and_update(f"    Element text content: {text_content[:200]}...")
+                                
+                                # Extract component ID and name using regex
+                                import re
+                                
+                                # Look for component ID patterns
+                                component_id_match = re.search(r'構成品番[：:]\s*([^\s\n]+)', text_content)
+                                if not component_id_match:
+                                    component_id_match = re.search(r'品番[：:]\s*([^\s\n]+)', text_content)
+                                
+                                # Look for component name patterns - be more flexible with the pattern
+                                component_name_match = re.search(r'商品名[：:]\s*([^\n\r]+?)(?=\n|$|構成品番|品番)', text_content)
+                                if not component_name_match:
+                                    component_name_match = re.search(r'名称[：:]\s*([^\n\r]+?)(?=\n|$|構成品番|品番)', text_content)
+                                if not component_name_match:
+                                    # Try without colon
+                                    component_name_match = re.search(r'商品名\s+([^\n\r]+?)(?=\n|$|構成品番|品番)', text_content)
+                                if not component_name_match:
+                                    component_name_match = re.search(r'名称\s+([^\n\r]+?)(?=\n|$|構成品番|品番)', text_content)
+                                
+                                if component_id_match and component_name_match:
+                                    component_id = component_id_match.group(1).strip()
+                                    # Remove diamond symbol if present
+                                    component_id = component_id.replace("◆", "").strip()
+                                    component_name = component_name_match.group(1).strip()
+                                    
+                                    components.append({
+                                        'component_id': component_id,
+                                        'component_name': component_name
+                                    })
+                                    self.log_and_update(f"    Found component via regex: {component_id} - {component_name}")
+                                    
+                            except Exception as e:
+                                self.log_and_update(f"    Error processing component element: {str(e)}")
+                                continue
+                    else:
+                        self.log_and_update(f"  Found {len(components)} components in setPartsBox_content, skipping XPath search to avoid duplicates")
+                    
+                    # Method 2: Specific regex for setPartsBox_content structure (only if no components found)
+                    if not components:
+                        self.log_and_update("  Trying specific regex for setPartsBox_content structure...")
+                        
+                        # Look for patterns like: 構成品番：ID followed by 商品名：Name within partsSet structure
+                        parts_set_pattern = r'構成品番[：:]\s*([^\s\n]+).*?商品名[：:]\s*([^\n\r]+?)(?=\n|$|構成品番|品番|希望小売価格)'
+                        parts_set_matches = re.findall(parts_set_pattern, page_text, re.DOTALL)
+                        self.log_and_update(f"  Found {len(parts_set_matches)} partsSet matches: {parts_set_matches}")
+                        
+                        for comp_id, comp_name in parts_set_matches:
+                            comp_id = comp_id.strip()
+                            # Remove diamond symbol if present
+                            comp_id = comp_id.replace("◆", "").strip()
+                            comp_name = comp_name.strip()
+                            if comp_id and comp_name:
+                                # Check if this component is already in the list
+                                existing_component = next((comp for comp in components if comp['component_id'] == comp_id), None)
+                                if not existing_component:
+                                    components.append({
+                                        'component_id': comp_id,
+                                        'component_name': comp_name
+                                    })
+                                    self.log_and_update(f"    Added component from partsSet regex: {comp_id} - {comp_name}")
+                                else:
+                                    self.log_and_update(f"    Component {comp_id} already exists, skipping")
+                    else:
+                        self.log_and_update(f"  Found {len(components)} components in setPartsBox_content, skipping partsSet regex to avoid duplicates")
+                    
+                    # Method 3: Only use comprehensive text search if no components found in setPartsBox_content
+                    if not components:
+                        self.log_and_update("  No components found in setPartsBox_content, trying comprehensive text pattern search...")
+                        # Use the page_text we already extracted for debugging
+                        self.log_and_update(f"  Using page text length: {len(page_text)} characters")
+                        
+                        # Look for patterns like "TCA573" or "TCF5831" (component IDs)
+                        import re
+                        component_id_patterns = re.findall(r'\b(TCA\d+[A-Z0-9#]*|TCF\d+[A-Z0-9#]*)\b', page_text)
+                        self.log_and_update(f"  Found potential component IDs: {component_id_patterns}")
+                        
+                        # Method 3a: Try to find all component blocks using a more comprehensive pattern
+                        self.log_and_update("  Trying comprehensive component block extraction...")
+                        # Look for patterns like: 構成品番：ID followed by 商品名：Name
+                        component_blocks = re.findall(r'構成品番[：:]\s*([^\s\n]+).*?商品名[：:]\s*([^\n\r]+?)(?=\n|$|構成品番|品番)', page_text, re.DOTALL)
+                        self.log_and_update(f"  Found {len(component_blocks)} component blocks: {component_blocks}")
+                        
+                        for comp_id, comp_name in component_blocks:
+                            comp_id = comp_id.strip()
+                            # Remove diamond symbol if present
+                            comp_id = comp_id.replace("◆", "").strip()
+                            comp_name = comp_name.strip()
+                            if comp_id and comp_name:
+                                # Check if this component is already in the list
+                                existing_component = next((comp for comp in components if comp['component_id'] == comp_id), None)
+                                if not existing_component:
+                                    components.append({
+                                        'component_id': comp_id,
+                                        'component_name': comp_name
+                                    })
+                                    self.log_and_update(f"    Added component from block: {comp_id} - {comp_name}")
+                                else:
+                                    self.log_and_update(f"    Component {comp_id} already exists, skipping")
+                        
+                        # Method 3b: For each potential component ID, try to find associated product name
+                        for comp_id in component_id_patterns:
+                            # Remove diamond symbol if present
+                            comp_id = comp_id.replace("◆", "").strip()
+                            # Look for structured patterns around this component ID
+                            # Pattern: 構成品番：ID followed by 商品名：Name
+                            structured_pattern = rf'構成品番[：:]\s*{re.escape(comp_id)}.*?商品名[：:]\s*([^\n\r]+?)(?=\n|$|構成品番|品番)'
+                            structured_match = re.search(structured_pattern, page_text, re.DOTALL)
+                            
+                            if structured_match:
+                                component_name = structured_match.group(1).strip()
+                                # Check if this component is already in the list
+                                existing_component = next((comp for comp in components if comp['component_id'] == comp_id), None)
+                                if not existing_component:
+                                    components.append({
+                                        'component_id': comp_id,
+                                        'component_name': component_name
+                                    })
+                                    self.log_and_update(f"    Found component via structured pattern: {comp_id} - {component_name}")
+                                else:
+                                    self.log_and_update(f"    Component {comp_id} already exists, skipping")
                             else:
-                                self.log_and_update(f"    Component {comp_id} already exists, skipping")
-                        else:
-                            # Fallback: Look for text around this component ID
-                            pattern = rf'.{{0,200}}{re.escape(comp_id)}.{{0,200}}'
-                            matches = re.findall(pattern, page_text, re.IGNORECASE)
-                            for match in matches:
-                                # Try to extract product name from the context
-                                name_match = re.search(r'([^。\n]{10,50})', match)
-                                if name_match:
-                                    potential_name = name_match.group(1).strip()
-                                    if len(potential_name) > 5:  # Reasonable product name length
-                                        components.append({
-                                            'component_id': comp_id,
-                                            'component_name': potential_name
-                                        })
-                                        self.log_and_update(f"    Found component via pattern: {comp_id} - {potential_name}")
-                                        break
+                                # Fallback: Look for text around this component ID
+                                pattern = rf'.{{0,200}}{re.escape(comp_id)}.{{0,200}}'
+                                matches = re.findall(pattern, page_text, re.IGNORECASE)
+                                for match in matches:
+                                    # Try to extract product name from the context
+                                    name_match = re.search(r'([^。\n]{10,50})', match)
+                                    if name_match:
+                                        potential_name = name_match.group(1).strip()
+                                        if len(potential_name) > 5:  # Reasonable product name length
+                                            components.append({
+                                                'component_id': comp_id,
+                                                'component_name': potential_name
+                                            })
+                                            self.log_and_update(f"    Found component via pattern: {comp_id} - {potential_name}")
+                                            break
+                    else:
+                        self.log_and_update(f"  Found {len(components)} components in setPartsBox_content, skipping comprehensive text search to avoid duplicates")
                             
             except Exception as e:
                 self.log_and_update(f"  Error with alternative component extraction: {str(e)}")
