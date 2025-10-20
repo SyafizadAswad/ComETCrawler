@@ -639,43 +639,24 @@ class ComEtCrawler:
         self.log_and_update(f"Search completed across pages. Downloads completed for {total_downloaded} products.")
 
     def process_color_variations(self, driver, product):
-        """Process color variations for a product by clicking the color link and extracting all variants"""
+        """Process color variations for a product by navigating directly to the color variations page"""
         try:
-            # Look for the color link within the product container
-            color_link = None
-            try:
-                # Find the productColorLink within the product container
-                color_link = product['container'].find_element(By.CSS_SELECTOR, ".productColorLink a")
-                self.log_and_update(f"  Found color variation link for {product['product_id']}")
-            except Exception as e:
-                self.log_and_update(f"  No color variation link found for {product['product_id']}: {str(e)}")
+            # Check if we have stored color variation link information
+            color_variation_href = product.get('color_variation_href')
+            if not color_variation_href:
+                self.log_and_update(f"  No color variation link found for {product['product_id']}")
                 return []
             
-            if not color_link:
-                return []
+            self.log_and_update(f"  Found color variation link for {product['product_id']}: {color_variation_href}")
             
             # Store the original window handle
             original_window = driver.current_window_handle
             
             try:
-                # Click the color link
-                self.log_and_update(f"  Clicking color variation link for {product['product_id']}")
-                driver.execute_script("arguments[0].scrollIntoView(true);", color_link)
-                time.sleep(1)
-                
-                # Check if a new window/tab opens
-                existing_handles = set(driver.window_handles)
-                color_link.click()
+                # Navigate directly to the color variations page using the stored URL
+                self.log_and_update(f"  Navigating to color variations page for {product['product_id']}")
+                driver.get(color_variation_href)
                 time.sleep(3)
-                
-                new_handles = set(driver.window_handles) - existing_handles
-                if new_handles:
-                    # Switch to the new window
-                    new_window = list(new_handles)[0]
-                    driver.switch_to.window(new_window)
-                    self.log_and_update(f"  Switched to color variations window for {product['product_id']}")
-                else:
-                    self.log_and_update(f"  Color variations opened in same window for {product['product_id']}")
                 
                 # Wait for the color variations page to load
                 try:
@@ -688,21 +669,18 @@ class ComEtCrawler:
                 # Extract all color variation products
                 color_products = self.extract_color_variation_products(driver, product)
                 
-                # Close the color variations window and return to original
-                if new_handles:
-                    driver.close()
-                    driver.switch_to.window(original_window)
-                    self.log_and_update(f"  Closed color variations window and returned to original for {product['product_id']}")
+                # Return to the original page
+                driver.back()
+                time.sleep(2)
                 
                 return color_products
                 
             except Exception as e:
                 self.log_and_update(f"  Error processing color variations for {product['product_id']}: {str(e)}")
-                # Try to return to original window
+                # Try to return to original page if possible
                 try:
-                    if len(driver.window_handles) > 1 and driver.current_window_handle != original_window:
-                        driver.close()
-                        driver.switch_to.window(original_window)
+                    driver.back()
+                    time.sleep(2)
                 except:
                     pass
                 return []
@@ -1034,6 +1012,18 @@ class ComEtCrawler:
                     self.log_and_update(f"    Error processing image link: {str(e)}")
                     continue
             
+            # Extract color variation link information while container is fresh
+            color_variation_link = None
+            color_variation_href = None
+            try:
+                self.log_and_update("  Attempting to find color variation link...")
+                color_variation_link = container.find_element(By.CSS_SELECTOR, ".productColorLink a")
+                color_variation_href = color_variation_link.get_attribute('href')
+                self.log_and_update(f"  Found color variation link: {color_variation_href}")
+            except Exception as e:
+                self.log_and_update(f"  No color variation link found: {str(e)}")
+                pass
+
             self.log_and_update("  Finished extracting product info.")
             return {
                 'product_id': product_id,
@@ -1050,7 +1040,9 @@ class ComEtCrawler:
                 'component_href': component_href,
                 'has_components': has_components,
                 'product_images': product_images, # List of images to download
-                'container_text': container.text # Use container.text to get all text
+                'container_text': container.text, # Use container.text to get all text
+                'color_variation_link': color_variation_link,
+                'color_variation_href': color_variation_href
             }
             
         except Exception as e:

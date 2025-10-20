@@ -1,0 +1,59 @@
+[33mcommit d0f179c44d8e4b80ba126f043806e521315e2ecb[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m, [m[1;32mtemp-update[m[33m)[m
+Author: syaf izad aswad <syafizad12@gmail.com>
+Date:   Mon Oct 20 07:45:53 2025 +0900
+
+    fixes 1
+
+[33mcommit 8b81c2524ed7868276c0f242ca4374bfbbeaf2a9[m
+Author: syaf izad aswad <syafizad12@gmail.com>
+Date:   Fri Sep 19 11:41:26 2025 +0900
+
+    fixed set hinban and html generation
+
+[33mcommit fb8bae9a1c576a8249cdb7ea1495203a35c0bb3c[m
+Author: syaf izad aswad <syafizad12@gmail.com>
+Date:   Fri Sep 19 11:17:10 2025 +0900
+
+    fixed set hinban
+
+[33mcommit b11a1539a853b93063614d8aab31b4bf2dc2fa58[m
+Author: syaf izad aswad <syafizad12@gmail.com>
+Date:   Mon Sep 15 00:40:12 2025 +0900
+
+    ver2
+
+[33mcommit 5c7effa2d156e3253f900c4714d6c7d91c252fa8[m
+Author: syaf izad aswad <syafizad12@gmail.com>
+Date:   Sun Sep 14 22:35:33 2025 +0900
+
+    new revision
+
+[33mcommit f06a4f629e3ff23d564f07cf97026d0036f82d00[m
+Author: syaf izad aswad <syafizad12@gmail.com>
+Date:   Sun Aug 17 21:02:13 2025 +0900
+
+    working diagram, product image, specs
+
+[33mcommit 5e555619ff5c8018121514c154c2a27e47244cd0[m
+Author: syaf izad aswad <syafizad12@gmail.com>
+Date:   Sun Aug 17 20:03:25 2025 +0900
+
+    fixed search, half working on specs
+
+[33mcommit 455e39ab01427edb32cd6f019df82e2d868cf93a[m
+Author: syaf izad aswad <syafizad12@gmail.com>
+Date:   Tue Aug 12 01:00:30 2025 +0900
+
+    finalized on shouhinzu. product image and spec still WIP
+
+[33mcommit f1638ec799832f00e931885f7fdbe3c2d3a99255[m
+Author: syaf izad aswad <syafizad12@gmail.com>
+Date:   Mon Aug 11 22:51:46 2025 +0900
+
+    image + spec functionality added
+
+[33mcommit fa49489df706a284ab27eacab5002ac5bbf59fdf[m
+Author: syaf izad aswad <syafizad12@gmail.com>
+Date:   Mon Aug 11 20:31:47 2025 +0900
+
+    first commit
