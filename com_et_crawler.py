@@ -461,23 +461,69 @@ class ComEtCrawler:
             self.is_searching = False
             self.search_button.config(state='normal')
     
-    def ensure_on_search_results_page(self, driver):
+    def ensure_on_search_results_page(self, driver, original_search_url=None):
         """Ensure we're on the search results page before processing products."""
         try:
             current_url = driver.current_url
-            # Check if we're on a search results page
-            if "item_search" not in current_url and "search" not in current_url:
+            self.log_and_update(f"    Current URL: {current_url}")
+            
+            # Check if we're on a search results page (specifically item_search, not item_view_set)
+            if "item_search" not in current_url:
                 self.log_and_update("    Not on search results page, attempting to return...")
-                # Try to go back to the search results
-                driver.back()
-                time.sleep(2)
                 
-                # If still not on search results, try to navigate to the original search URL
-                if "item_search" not in driver.current_url:
-                    self.log_and_update("    Attempting to return to search results page...")
-                    # You might need to store the original search URL and navigate back to it
-                    # For now, we'll just log the issue
-                    self.log_and_update(f"    Current URL: {driver.current_url}")
+                # First, try to go back to the search results
+                try:
+                    driver.back()
+                    time.sleep(3)
+                    new_url = driver.current_url
+                    self.log_and_update(f"    After back(): {new_url}")
+                    
+                    # Check if we're now on search results
+                    if "item_search" in new_url:
+                        self.log_and_update("    Successfully returned to search results page via back()")
+                        return
+                except Exception as e:
+                    self.log_and_update(f"    Error using back(): {str(e)}")
+                
+                # If back() didn't work, try to close any extra windows/tabs and switch to main window
+                try:
+                    current_handles = driver.window_handles
+                    if len(current_handles) > 1:
+                        self.log_and_update(f"    Found {len(current_handles)} windows, switching to main window...")
+                        # Close extra windows and switch to the first one (main window)
+                        for handle in current_handles[1:]:
+                            try:
+                                driver.switch_to.window(handle)
+                                driver.close()
+                            except:
+                                pass
+                        driver.switch_to.window(current_handles[0])
+                        time.sleep(2)
+                        
+                        # Check if we're now on search results
+                        final_url = driver.current_url
+                        if "item_search" in final_url:
+                            self.log_and_update("    Successfully returned to search results page via window switching")
+                            return
+                except Exception as e:
+                    self.log_and_update(f"    Error switching windows: {str(e)}")
+                
+                # If all else fails and we have the original search URL, try to navigate to it
+                if original_search_url:
+                    try:
+                        self.log_and_update(f"    Attempting to navigate to original search URL: {original_search_url}")
+                        driver.get(original_search_url)
+                        time.sleep(3)
+                        self.log_and_update("    Successfully navigated to original search URL")
+                        return
+                    except Exception as e:
+                        self.log_and_update(f"    Error navigating to original search URL: {str(e)}")
+                
+                # If all else fails, log the issue
+                self.log_and_update(f"    Could not return to search results page. Current URL: {driver.current_url}")
+            else:
+                self.log_and_update("    Already on search results page")
+                
         except Exception as e:
             self.log_and_update(f"    Error ensuring on search results page: {str(e)}")
 
@@ -486,6 +532,10 @@ class ComEtCrawler:
         total_downloaded = 0
         page_index = 1
         seen_product_ids = set()
+        
+        # Store the original search URL as a fallback
+        original_search_url = driver.current_url
+        self.log_and_update(f"Stored original search URL: {original_search_url}")
 
         while True:
             try:
@@ -497,7 +547,181 @@ class ComEtCrawler:
                 except TimeoutException:
                     self.log_and_update("Timeout waiting for page body; continuing anyway.")
 
-                # Locate product containers
+                # FIRST: Ensure we're on the search results page before checking pagination
+                self.ensure_on_search_results_page(driver, original_search_url)
+                
+                # SECOND: Check for pagination BEFORE processing products
+                # This ensures we're checking on the actual search results page
+                self.log_and_update(f"Checking for pagination on page {page_index}...")
+                next_button = None
+                
+                # Wait a bit for any dynamic content to load
+                time.sleep(2)
+                
+                # Quick debug: Let's see what pagination elements exist
+                try:
+                    # Check for any elements with "次へ" text (including nested)
+                    jitsu_count = len(driver.find_elements(By.XPATH, "//*[contains(text(), '次へ')]"))
+                    self.log_and_update(f"Found {jitsu_count} elements containing '次へ'")
+                    
+                    # Check for links with "次へ" text (including nested spans)
+                    jitsu_links_count = len(driver.find_elements(By.XPATH, "//a[contains(text(), '次へ') or .//span[contains(text(), '次へ')]]"))
+                    self.log_and_update(f"Found {jitsu_links_count} links containing '次へ' (including nested)")
+                    
+                    # Check for any elements with "next" class
+                    next_count = len(driver.find_elements(By.CSS_SELECTOR, ".next"))
+                    self.log_and_update(f"Found {next_count} elements with class 'next'")
+                    
+                    # Check for pagination containers
+                    pageing_count = len(driver.find_elements(By.CSS_SELECTOR, "ul.pageing"))
+                    self.log_and_update(f"Found {pageing_count} ul.pageing elements")
+                    
+                    # If we found elements, let's see what they are
+                    if jitsu_count > 0:
+                        jitsu_elements = driver.find_elements(By.XPATH, "//*[contains(text(), '次へ')]")
+                        for i, elem in enumerate(jitsu_elements[:3]):  # Show first 3
+                            try:
+                                tag = elem.tag_name
+                                text = elem.text.strip()
+                                classes = elem.get_attribute('class') or ''
+                                href = elem.get_attribute('href') or ''
+                                displayed = elem.is_displayed()
+                                self.log_and_update(f"  '次へ'[{i}]: tag='{tag}', text='{text}', classes='{classes}', href='{href}', displayed={displayed}")
+                            except:
+                                pass
+                except Exception as e:
+                    self.log_and_update(f"Debug error: {str(e)}")
+                
+                # Method 1: Try to find any clickable element with "次へ" text (including nested spans)
+                try:
+                    # Look for links that contain "次へ" text directly or in nested elements
+                    jitsu_elements = driver.find_elements(By.XPATH, "//a[contains(text(), '次へ') or .//span[contains(text(), '次へ')]]")
+                    for elem in jitsu_elements:
+                        try:
+                            if elem.is_displayed() and elem.is_enabled():
+                                href = elem.get_attribute('href')
+                                if href and 'javascript:void(0)' not in href:
+                                    next_button = elem
+                                    self.log_and_update(f"Found next button by text: {href}")
+                                    break
+                        except:
+                            continue
+                except:
+                    pass
+                
+                # Method 2: Try to find elements with "next" class
+                if not next_button:
+                    try:
+                        next_elements = driver.find_elements(By.CSS_SELECTOR, "a.next")
+                        for elem in next_elements:
+                            try:
+                                if elem.is_displayed() and elem.is_enabled():
+                                    href = elem.get_attribute('href')
+                                    if href and 'javascript:void(0)' not in href:
+                                        next_button = elem
+                                        self.log_and_update(f"Found next button by class: {href}")
+                                        break
+                            except:
+                                continue
+                    except:
+                        pass
+                
+                # Method 3: Look for pagination containers and search within them
+                if not next_button:
+                    try:
+                        pagination_containers = [
+                            "ul.pageing",
+                            "ul.pagination", 
+                            "div.pagination",
+                            "nav.pagination",
+                            ".pagination",
+                            ".pageing"
+                        ]
+                        
+                        for container_selector in pagination_containers:
+                            try:
+                                containers = driver.find_elements(By.CSS_SELECTOR, container_selector)
+                                for container in containers:
+                                    # Look for links within this container
+                                    links = container.find_elements(By.TAG_NAME, "a")
+                                    for link in links:
+                                        try:
+                                            text = link.text.strip()
+                                            href = link.get_attribute('href')
+                                            classes = link.get_attribute('class') or ''
+                                            
+                                            if (('next' in classes.lower() or '次へ' in text) and 
+                                                href and 'javascript:void(0)' not in href and
+                                                link.is_displayed() and link.is_enabled()):
+                                                next_button = link
+                                                self.log_and_update(f"Found next button in {container_selector}: {href}")
+                                                break
+                                        except:
+                                            continue
+                                    if next_button:
+                                        break
+                                if next_button:
+                                    break
+                            except:
+                                continue
+                    except:
+                        pass
+                
+                # Method 4: Look for any link containing pagination-related text (including nested spans)
+                if not next_button:
+                    try:
+                        pagination_texts = ['次へ', 'next', 'Next', 'NEXT', '次のページ', '次ページ', '>', '→']
+                        for text in pagination_texts:
+                            try:
+                                # Look for links that contain the text directly or in nested elements
+                                elements = driver.find_elements(By.XPATH, f"//a[contains(text(), '{text}') or .//span[contains(text(), '{text}')]]")
+                                for elem in elements:
+                                    try:
+                                        href = elem.get_attribute('href')
+                                        if (href and 'javascript:void(0)' not in href and
+                                            elem.is_displayed() and elem.is_enabled()):
+                                            next_button = elem
+                                            self.log_and_update(f"Found next button by text '{text}': {href}")
+                                            break
+                                    except:
+                                        continue
+                                if next_button:
+                                    break
+                            except:
+                                continue
+                    except:
+                        pass
+                
+                # Method 5: Specific targeting of the exact pagination structure from reference HTML
+                if not next_button:
+                    try:
+                        # Look specifically for ul.pageing > li > a.next > span.arrow containing "次へ"
+                        next_elements = driver.find_elements(By.CSS_SELECTOR, "ul.pageing li a.next")
+                        for elem in next_elements:
+                            try:
+                                if elem.is_displayed() and elem.is_enabled():
+                                    href = elem.get_attribute('href')
+                                    if href and 'javascript:void(0)' not in href:
+                                        # Check if it contains the arrow span with "次へ"
+                                        span_elements = elem.find_elements(By.CSS_SELECTOR, "span.arrow")
+                                        for span in span_elements:
+                                            if '次へ' in span.text:
+                                                next_button = elem
+                                                self.log_and_update(f"Found next button by specific structure: {href}")
+                                                break
+                                        if next_button:
+                                            break
+                            except:
+                                continue
+                    except:
+                        pass
+                
+                # Store the next button for later use after processing products
+                has_next_page = next_button is not None
+                if not has_next_page:
+                    self.log_and_update("No next button found with any selector")
+                
+                # NOW: Process products on the current page
                 product_containers = []
                 container_selectors = [
                     "table.productTable tbody tr",
@@ -601,98 +825,202 @@ class ComEtCrawler:
                     except Exception as e:
                         self.log_and_update(f"Error processing {product.get('product_id', 'unknown')} on page {page_index}: {str(e)}")
 
-                # Pagination: click 次へ (class="next") if present
-                try:
-                    self.log_and_update(f"Checking for pagination on page {page_index}...")
-                    next_button = None
+                # AFTER processing products: Use the stored next button to navigate
                     
-                    # Try multiple approaches to find the next button
-                    pagination_selectors = [
-                        "ul.pageing a.next",
-                        "ul.pageing li a.next", 
-                        "a.next",
-                        ".next",
-                        "//a[@class='next']",
-                        "//a[contains(@class, 'next')]",
-                        "//a[span[@class='arrow' and contains(text(), '次へ')]]",
-                        "//a[contains(text(), '次へ')]"
-                    ]
+                    # Wait a bit for any dynamic content to load
+                    time.sleep(2)
                     
-                    for selector in pagination_selectors:
-                        try:
-                            if selector.startswith("//"):
-                                # XPath selector
-                                elems = driver.find_elements(By.XPATH, selector)
-                            else:
-                                # CSS selector
-                                elems = driver.find_elements(By.CSS_SELECTOR, selector)
-                            
-                            if elems:
-                                for elem in elems:
-                                    try:
-                                        text = elem.text.strip()
-                                        href = elem.get_attribute('href')
-                                        classes = elem.get_attribute('class') or ''
-                                        is_displayed = elem.is_displayed()
-                                        is_enabled = elem.is_enabled()
-                                        
-                                        # Check if this looks like a next button
-                                        if ('next' in classes.lower() or '次へ' in text) and href and is_displayed and is_enabled:
-                                            next_button = elem
-                                            self.log_and_update(f"Found next button: text='{text}', href='{href}'")
-                                            break
-                                    except Exception:
-                                        continue
-                                
-                                if next_button:
-                                    break
-                                
-                        except Exception:
-                            continue
-
-                    if next_button:
-                        try:
-                            button_text = next_button.text.strip()
-                            button_href = next_button.get_attribute('href')
-                            
-                            self.log_and_update(f"Next button found: text='{button_text}', href='{button_href}'")
-                            self.log_and_update("Next page detected. Navigating to the next page (次へ)...")
-                            
-                            driver.execute_script("arguments[0].scrollIntoView(true);", next_button)
-                            time.sleep(1)
-                            
-                            # Store current URL to verify navigation
-                            current_url_before = driver.current_url
-                            self.log_and_update(f"Current URL before click: {current_url_before}")
-                            
-                            next_button.click()
-                            
-                            # Wait for navigation to complete
+                    # Quick debug: Let's see what pagination elements exist
+                    try:
+                        # Check for any elements with "次へ" text (including nested)
+                        jitsu_count = len(driver.find_elements(By.XPATH, "//*[contains(text(), '次へ')]"))
+                        self.log_and_update(f"Found {jitsu_count} elements containing '次へ'")
+                        
+                        # Check for links with "次へ" text (including nested spans)
+                        jitsu_links_count = len(driver.find_elements(By.XPATH, "//a[contains(text(), '次へ') or .//span[contains(text(), '次へ')]]"))
+                        self.log_and_update(f"Found {jitsu_links_count} links containing '次へ' (including nested)")
+                        
+                        # Check for any elements with "next" class
+                        next_count = len(driver.find_elements(By.CSS_SELECTOR, ".next"))
+                        self.log_and_update(f"Found {next_count} elements with class 'next'")
+                        
+                        # Check for pagination containers
+                        pageing_count = len(driver.find_elements(By.CSS_SELECTOR, "ul.pageing"))
+                        self.log_and_update(f"Found {pageing_count} ul.pageing elements")
+                        
+                        # If we found elements, let's see what they are
+                        if jitsu_count > 0:
+                            jitsu_elements = driver.find_elements(By.XPATH, "//*[contains(text(), '次へ')]")
+                            for i, elem in enumerate(jitsu_elements[:3]):  # Show first 3
+                                try:
+                                    text = elem.text.strip()
+                                    tag = elem.tag_name
+                                    classes = elem.get_attribute('class') or ''
+                                    href = elem.get_attribute('href') if tag == 'a' else 'N/A'
+                                    displayed = elem.is_displayed()
+                                    self.log_and_update(f"  '次へ'[{i}]: tag='{tag}', text='{text}', classes='{classes}', href='{href}', displayed={displayed}")
+                                except:
+                                    pass
+                    except Exception as e:
+                        self.log_and_update(f"Debug error: {str(e)}")
+                    
+                    # Method 1: Try to find any clickable element with "次へ" text (including nested spans)
+                    try:
+                        # Look for links that contain "次へ" text directly or in nested elements
+                        jitsu_elements = driver.find_elements(By.XPATH, "//a[contains(text(), '次へ') or .//span[contains(text(), '次へ')]]")
+                        for elem in jitsu_elements:
                             try:
-                                WebDriverWait(driver, 15).until(
-                                    lambda driver: driver.current_url != current_url_before
-                                )
-                                self.log_and_update(f"Navigation successful. New URL: {driver.current_url}")
-                            except TimeoutException:
-                                self.log_and_update("Navigation timeout, but continuing...")
-                            
-                            # Additional wait for page to load
-                            WebDriverWait(driver, 15).until(EC.presence_of_element_located((By.CSS_SELECTOR, "body")))
-                            time.sleep(3)
-                            page_index += 1
-                            self.log_and_update(f"Successfully moved to page {page_index}")
-                            continue
-                        except Exception as e:
-                            self.log_and_update(f"Error clicking next button: {str(e)}")
-                    else:
-                        self.log_and_update("No next button found with any selector")
+                                if elem.is_displayed() and elem.is_enabled():
+                                    href = elem.get_attribute('href')
+                                    if href and 'javascript:void(0)' not in href:
+                                        next_button = elem
+                                        self.log_and_update(f"Found next button by text: {href}")
+                                        break
+                            except:
+                                continue
+                    except:
+                        pass
                     
+                    # Method 2: Try to find elements with "next" class
+                    if not next_button:
+                        try:
+                            next_elements = driver.find_elements(By.CSS_SELECTOR, "a.next")
+                            for elem in next_elements:
+                                try:
+                                    if elem.is_displayed() and elem.is_enabled():
+                                        href = elem.get_attribute('href')
+                                        if href and 'javascript:void(0)' not in href:
+                                            next_button = elem
+                                            self.log_and_update(f"Found next button by class: {href}")
+                                            break
+                                except:
+                                    continue
+                        except:
+                            pass
+                    
+                    # Method 3: Look for pagination containers and search within them
+                    if not next_button:
+                        try:
+                            pagination_containers = [
+                                "ul.pageing",
+                                "ul.pagination", 
+                                "div.pagination",
+                                "nav.pagination",
+                                ".paging",
+                                ".pagination"
+                            ]
+                            
+                            for container_selector in pagination_containers:
+                                try:
+                                    containers = driver.find_elements(By.CSS_SELECTOR, container_selector)
+                                    for container in containers:
+                                        # Look for links within this container
+                                        links = container.find_elements(By.TAG_NAME, "a")
+                                        for link in links:
+                                            try:
+                                                text = link.text.strip()
+                                                href = link.get_attribute('href')
+                                                classes = link.get_attribute('class') or ''
+                                                
+                                                if (('next' in classes.lower() or '次へ' in text) and 
+                                                    href and 'javascript:void(0)' not in href and
+                                                    link.is_displayed() and link.is_enabled()):
+                                                    next_button = link
+                                                    self.log_and_update(f"Found next button in {container_selector}: {href}")
+                                                    break
+                                            except:
+                                                continue
+                                        if next_button:
+                                            break
+                                    if next_button:
+                                        break
+                                except:
+                                    continue
+                        except:
+                            pass
+                    
+                    # Method 5: Specific targeting of the exact pagination structure from reference HTML
+                    if not next_button:
+                        try:
+                            # Look specifically for ul.pageing > li > a.next > span.arrow containing "次へ"
+                            next_elements = driver.find_elements(By.CSS_SELECTOR, "ul.pageing li a.next")
+                            for elem in next_elements:
+                                try:
+                                    if elem.is_displayed() and elem.is_enabled():
+                                        href = elem.get_attribute('href')
+                                        if href and 'javascript:void(0)' not in href:
+                                            # Check if it contains the arrow span with "次へ"
+                                            span_elements = elem.find_elements(By.CSS_SELECTOR, "span.arrow")
+                                            for span in span_elements:
+                                                if '次へ' in span.text:
+                                                    next_button = elem
+                                                    self.log_and_update(f"Found next button by specific structure: {href}")
+                                                    break
+                                            if next_button:
+                                                break
+                                except:
+                                    continue
+                        except:
+                            pass
+                    
+                    # Method 6: Look for any link containing pagination-related text (including nested spans)
+                    if not next_button:
+                        try:
+                            pagination_texts = ['次へ', 'next', 'Next', 'NEXT', '次のページ', '次ページ', '>', '→']
+                            for text in pagination_texts:
+                                try:
+                                    # Look for links that contain the text directly or in nested elements
+                                    elements = driver.find_elements(By.XPATH, f"//a[contains(text(), '{text}') or .//span[contains(text(), '{text}')]]")
+                                    for elem in elements:
+                                        try:
+                                            href = elem.get_attribute('href')
+                                            if (href and 'javascript:void(0)' not in href and
+                                                elem.is_displayed() and elem.is_enabled()):
+                                                next_button = elem
+                                                self.log_and_update(f"Found next button by text '{text}': {href}")
+                                                break
+                                        except:
+                                            continue
+                                    if next_button:
+                                        break
+                                except:
+                                    continue
+                        except:
+                            pass
+
+                # AFTER processing products: Ensure we're back on search results page, then use stored next button
+                self.ensure_on_search_results_page(driver, original_search_url)
+                
+                if has_next_page and next_button:
+                    try:
+                        self.log_and_update(f"Clicking next button to go to page {page_index + 1}...")
+                        current_url_before = driver.current_url
+                        
+                        # Scroll to the button and click it
+                        driver.execute_script("arguments[0].scrollIntoView(true);", next_button)
+                        time.sleep(1)
+                        next_button.click()
+                        
+                        # Wait for navigation to complete
+                        try:
+                            WebDriverWait(driver, 15).until(
+                                lambda driver: driver.current_url != current_url_before
+                            )
+                            self.log_and_update(f"Navigation successful. New URL: {driver.current_url}")
+                        except TimeoutException:
+                            self.log_and_update("Navigation timeout, but continuing...")
+                        
+                        # Additional wait for page to load
+                        WebDriverWait(driver, 15).until(EC.presence_of_element_located((By.CSS_SELECTOR, "body")))
+                        time.sleep(3)
+                        page_index += 1
+                        self.log_and_update(f"Successfully moved to page {page_index}")
+                        continue
+                    except Exception as e:
+                        self.log_and_update(f"Error clicking next button: {str(e)}")
+                else:
                     # If we reach here, no next page was found or clicked
                     self.log_and_update("No further pages detected. Finishing.")
-                    break
-                    
-                except Exception as e:
-                    self.log_and_update(f"Pagination check/click failed: {str(e)}")
                     break
 
             except Exception as e:
