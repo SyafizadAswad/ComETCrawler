@@ -1,0 +1,659 @@
+@charset "utf-8";
+/**********************************************
+TOTO コメット
+検索ページ　CSS
+***********************************************/
+.tab {
+	margin: 0 0 30px;
+}
+
+.recommendList2 {
+	overflow:hidden;
+	*zoom:1;
+	margin: 0 -33px 0 0;
+}
+.recommendList2 li {
+	display:inline-block;
+	*display:inline;
+	*zoom:1;
+	vertical-align: top;
+	width: 280px;
+	margin: 0 33px 10px 0;
+}
+.recommendList2 a {
+	color: #1152b2;
+}
+
+.imgUnitList p {
+	margin: 0;
+}
+.imgUnitList .url {
+	font-size: 86.66%;
+}
+.imgUnitList a {
+	color: #1152b2;
+}
+/*============================================================
+  searcTOTO
+============================================================*/
+.searchTOTO .frame {margin-bottom: 30px;}
+
+.searchTOTO .column2 {
+	margin: 0 -20px -30px 0;
+}
+.searchTOTO .ranking .imgUnitList {
+	margin: 0;
+}
+.searchTOTO .ranking .imgUnit {
+	margin-bottom: 10px;
+}
+.searchTOTO .ranking .imgUnit p {
+	margin-bottom: 10px;
+}
+.searchTOTO .qa dl {
+	margin: 0 0 10px;
+}
+.searchTOTO .qa dt {
+	font-weight: bold;
+}
+.searchTOTO .qa dd {
+	padding-left: 1.5em;
+	text-indent: -1.5em;
+	margin: 0 0 5px;
+}
+.searchTOTO .qa dd a {
+	color: #1152b2;
+}
+.searchTOTO .qa .pageing {
+	margin: 0;
+}
+
+/*============================================================
+  searchCad
+============================================================*/
+.searchCad .linkBtns {
+	float: left;
+	margin: 0 -10px 20px 0;
+}
+.searchCad .linkBtns li {
+	float: left;
+	margin: 0 10px 0 0;
+}
+.searchCad .linkBtns .btn {
+	width: 232px;
+	padding: 0;
+}
+.searchCad .sort {
+	overflow:hidden;
+	*zoom:1;
+	border-bottom: 1px solid #ccc;
+	padding: 0 0 20px;
+}
+.searchCad .sort dl {
+	float: left;
+	margin: 0;
+}
+.searchCad .sort dt,
+.searchCad .sort dd {
+	float: left;
+	line-height: 30px;
+	margin: 0 8px 0 0;
+}
+.searchCad .sort dl .btn {
+	background: #555;
+	line-height: 30px;
+	width: 70px;
+	height: 30px;
+	padding: 0;
+}
+.searchCad .sort dl .btn:hover {
+	background: #888;
+}
+.searchCad .sort .btn.md-active,
+.searchCad .sort .btn.md-active:hover {
+	background: #fff;
+	border: 1px solid #ccc;
+	line-height: 28px;
+	width: 68px;
+	height: 28px;
+	color: #222;
+}
+.searchCad .addAllItem {
+	float: right;
+	margin: 0;
+}
+.searchCad .addAllItem .btn {
+	width: auto;
+	padding: 0 20px;
+}
+.searchCad .cartInfo {
+	clear: both;
+}
+.searchCad .cartInfo b {
+	color: #1152b2;
+	font-weight: bold;
+}
+
+.searchCad .resultTable .img {
+	border: 1px solid #ccc;
+	width: 168px;
+	height: 168px;
+	line-height: 168px;
+	text-align: center;
+	float: left;
+	margin: 0 20px 0 0;
+}
+.searchCad .resultTable .img img {
+	vertical-align: middle;
+	max-width: 166px;
+	max-height: 166px;
+}
+.searchCad .resultTable dl {
+	overflow:hidden;
+	*zoom:1;
+}
+.searchCad .resultTable dt,
+.searchCad .resultTable dd {
+	float: left;
+}
+.searchCad .resultTable dt {
+	font-weight: bold;
+	width: 4.1em;
+}
+.searchCad .resultTable dd {
+	width: 11em;
+	-ms-word-break: break-all;
+	word-break: break-all;
+}
+.searchCad .resultTable dd b {
+	color: #00f;
+}
+.searchCad .resultTable .btns {
+	margin: 12px 0 -10px;
+}
+.searchCad .resultTable .btns li {
+	margin: 0 0 10px;
+}
+.searchCad .allDownload {
+	border: 1px solid #ccc;
+	padding: 20px 20px 0;
+}
+.searchCad .allDownload .headLine3 {
+	background: none;
+	color: #222;
+	margin: 0 0 8px;
+	padding: 0;
+	line-height: 1;
+}
+.searchCad .resultTable .btns .three-d img {
+	height: 30px;
+	width: 30px;
+	vertical-align: middle;
+	display: inline-block;
+	margin-right: 0.5em;
+}
+
+/*============================================================
+  searchDetail
+============================================================*/
+.searchDetail .searchDetailInfo {
+	overflow:hidden;
+	*zoom:1;
+}
+.searchDetail .searchDetailInfo .imgArea {
+	float: left;
+	overflow:hidden;
+	*zoom:1;
+	margin: 0 30px 0 -10px;
+	width: 310px;
+}
+.searchDetail .searchDetailInfo .imgArea img {
+	max-width: 148px;
+}
+.searchDetail .searchDetailInfo .imgArea li {
+	display: inline-block;
+	vertical-align: top;
+	margin: 0 0 0 10px;
+	max-width: 148px;
+}
+.searchDetail .searchDetailInfo .infoArea {
+	float: left;
+}
+.searchDetail .searchDetailInfo .infoArea dl {
+	margin: 0 0 5px;
+}
+.searchDetail .searchDetailInfo .infoArea dt,
+.searchDetail .searchDetailInfo .infoArea dd {
+	display:inline-block;
+	*display:inline;
+	*zoom:1;
+	vertical-align: top;
+}
+.searchDetail .searchDetailInfo .infoArea dt {
+	font-weight: bold;
+	width: 7.5em;
+	margin: 0 8px 0 0;
+}
+.searchDetail .searchDetailInfo .infoArea dd {
+	width: 270px;
+	-ms-word-break: break-all;
+	word-break: break-all;
+	padding-left: 17px;
+	text-indent: -15px;
+}
+.searchDetail .searchDetailInfo .infoArea .price {
+	font-family: 'メイリオ','ヒラギノ角ゴ Pro W3' , 'Hiragino Kaku Gothic Pro','メイリオ',Meiryo,'ＭＳ Ｐゴシック','ヒラギノ丸ゴ Pro W4','Hiragino Maru Gothic Pro',Verdana,Arial,sans-serif,Osaka;
+}
+
+
+.searchDetail .searchDetailInfo .btnArea {
+	float: right;
+}
+.searchDetail .searchDetailInfo .btnArea li {
+	margin: 0 0 10px;
+}
+.searchDetail .searchDetailInfo .btnArea .btn {
+	width: 188px;
+	padding: 0;
+}
+
+.searchDetail .js-tabContent {
+	margin-top: 0;
+}
+.searchDetail .even {
+	background: #edf5ff;
+}
+.searchDetail th,
+.searchDetail td {
+	padding: 10px 20px;
+	-ms-word-break: break-all;
+	word-break: break-all;
+}
+.searchDetail th span {
+	color: #cb2b00;
+}
+.searchDetail .md-pdfBtn {
+	width: 65px;
+	padding: 0;
+	height: 28px;
+	line-height: 28px;
+	font-size: 86.66%;
+}
+
+/*** manual ***/
+.searchDetail .manual .annotation {
+	padding-left: 2em;
+	text-indent: -2em;
+}
+.searchDetail .manual .annotation span {
+	color: #cb2b00;
+}
+.searchDetail .manual table {
+	margin: 0;
+}
+
+/*** dismantle ***/
+.searchDetail .dismantle .leftBox {
+	float: left;
+	width: 497px;
+	margin: 0 20px 0 0;
+}
+.searchDetail .dismantle .leftBox th,
+.searchDetail .dismantle .leftBox td {
+	vertical-align: top;
+	padding: 10px 20px;
+}
+.searchDetail .dismantle .leftBox dd {
+	margin-left: 1em;
+}
+.searchDetail .dismantle .leftBox dd li {
+	padding-left: 1em;
+	text-indent: -1em;
+}
+
+.searchDetail .dismantle .rightBox {
+	float: left;
+	width: 400px;
+	margin-bottom: 0;
+}
+.searchDetail .dismantle .img li {
+	margin: 0 0 20px;
+}
+.searchDetail .dismantle .img img {
+	max-width: 400px;
+}
+
+.searchDetail .dismantle .repairParts {
+	clear: both;
+}
+.searchDetail .dismantle .repairParts dl span {
+	color: #cb2b00;
+}
+.searchDetail .dismantle table {
+	margin: 0;
+}
+.searchDetail .dismantle .repairParts th,
+.searchDetail .dismantle .repairParts td {
+	padding: 10px;
+}
+.searchDetail .dismantle .repairParts .price {
+	font-family: 'メイリオ','ヒラギノ角ゴ Pro W3' , 'Hiragino Kaku Gothic Pro','メイリオ',Meiryo,'ＭＳ Ｐゴシック','ヒラギノ丸ゴ Pro W4','Hiragino Maru Gothic Pro',Verdana,Arial,sans-serif,Osaka;
+}
+
+/*** setParts ***/
+.searchDetail .setParts .setPartsBox {
+	border: 1px solid #ccc;
+}
+.searchDetail .setParts .setPartsBox_header {
+	padding: 10px 18px;
+	font-weight: bold;
+	background: #eee;
+	border-bottom: 1px solid #ccc;
+}
+.searchDetail .setParts .setPartsBox_header dl {
+	margin: 0;
+}
+.searchDetail .setParts .setPartsBox_header dt,
+.searchDetail .setParts .setPartsBox_header dd {
+	display:inline-block;
+	*display:inline;
+	*zoom:1;
+	vertical-align: top;
+}
+.searchDetail .setParts .setPartsBox_content {
+	padding: 0 20px;
+}
+.searchDetail .setParts .partsSet {
+	padding: 20px 0 10px;
+	border-top:1px solid #ccc;
+	display: table;
+	width: 100%;
+}
+.searchDetail .setParts .partsSet:first-child {
+	border-top:none;
+}
+.searchDetail .setParts .partsSet .info {
+	display: table-cell;
+}
+.searchDetail .setParts .partsSet dl {
+	margin: 0;
+}
+.searchDetail .setParts .partsSet dt,
+.searchDetail .setParts .partsSet dd {
+	display:inline-block;
+	*display:inline;
+	*zoom:1;
+	vertical-align: top;
+}
+.searchDetail .setParts .partsSet dt {
+	width: 6.1em;
+}
+.searchDetail .setParts .partsSet dd {
+	-ms-word-break: break-all;
+	word-break: break-all;
+	padding-left: 20px;
+	text-indent: -20px;
+	width: 154px;
+}
+.searchDetail .setParts .partsSet .price {
+	font-family: 'メイリオ','ヒラギノ角ゴ Pro W3' , 'Hiragino Kaku Gothic Pro','メイリオ',Meiryo,'ＭＳ Ｐゴシック','ヒラギノ丸ゴ Pro W4','Hiragino Maru Gothic Pro',Verdana,Arial,sans-serif,Osaka;
+}
+
+.searchDetail .setParts .partsSet .labels {
+	display: table-cell;
+	width: 595px;
+}
+.searchDetail .setParts .partsSet .zumenPdf {
+	background: url(../../img/default/icon/icon_pdf.gif) 80px center no-repeat;
+	display: block;
+}
+.searchDetail .setParts .partsSet .labels li {
+	display:inline-block;
+	*display:inline;
+	*zoom:1;
+	vertical-align: top;
+	width: 109px;
+	height: 30px;
+	line-height: 30px;
+	text-align: center;
+	margin: 0 0 10px 8px;
+	overflow: hidden;
+}
+.searchDetail .setParts .partsSet .labels li a {
+	width: 100%;
+	height: 100%;
+	padding: 0;
+	line-height: 31px;
+}
+.searchDetail .setParts .partsSet .label_disabled {
+	display: block;
+	background: #f3f3f3;
+	text-align: center;
+	color: #bebdb8;
+}
+.searchDetail .setParts .partsSet .labels .blank {
+	visibility: hidden;
+}
+
+/*** replacement ***/
+.searchDetail .replacement table {
+	margin: 0;
+}
+.searchDetail .replacement th {
+	text-align: center;
+	vertical-align: middle;
+	width: 8px;
+}
+.searchDetail .replacement .img {
+	width: 98px;
+	height: 98px;
+	text-align: center;
+	display: table-cell;
+	vertical-align: middle;
+	padding-right: 5px;
+	overflow: hidden;
+}
+.searchDetail .replacement .img img {
+	border: 1px solid #ccc;
+	max-width: 98px;
+	max-height: 98px;
+	vertical-align: middle;
+}
+.searchDetail .replacement .imgNote {
+	display: table-cell;
+	width: 98px;
+	height: 98px;
+	border: 1px solid #ccc;
+	vertical-align: middle;
+}
+.searchDetail .replacement .summary {
+	display: table-cell;
+	padding-left: 20px;
+}
+.searchDetail .replacement .summary dl {
+	margin: 0;
+}
+.searchDetail .replacement .summary dt,
+.searchDetail .replacement .summary dd {
+	display:inline-block;
+	*display:inline;
+	*zoom:1;
+	vertical-align: top;
+}
+.searchDetail .replacement .summary dd {
+	-ms-word-break: break-all;
+	word-break: break-all;
+	padding-left: 20px;
+	text-indent: -20px;
+	width: 475px;
+}
+.searchDetail .replacement .summary .price {
+	font-family: 'メイリオ','ヒラギノ角ゴ Pro W3' , 'Hiragino Kaku Gothic Pro','メイリオ',Meiryo,'ＭＳ Ｐゴシック','ヒラギノ丸ゴ Pro W4','Hiragino Maru Gothic Pro',Verdana,Arial,sans-serif,Osaka;
+}
+.searchDetail .replacement .summary dt {
+	width: 6.1em;
+}
+.searchDetail .replacement .info {
+	margin-top: 20px;
+}
+
+/*** spec ***/
+.searchDetail .spec th,
+.searchDetail .spec td {
+	padding: 10px 20px;
+}
+.searchDetail .spec .spec_th-big {
+	background: #5f5f5f;
+	color: #fff;
+}
+.searchDetail .spec .facultyTable th {
+	font-weight: bold;
+}
+.searchDetail .spec .faculty {
+	overflow:hidden;
+	*zoom:1;
+	margin: 0 -10px -10px 0;
+}
+.searchDetail .spec .faculty li {
+	float: left;
+	font-size: 93.33%;
+	padding: 8px 10px;
+	width: 120px;
+	height: 4.5em;
+	margin: 0 10px 10px 0;
+}
+.searchDetail .spec .faculty.md-color01 li { background: #dceaff; }
+.searchDetail .spec .faculty.md-color02 li { background: #ffe8c5; }
+.searchDetail .spec .faculty.md-color03 li { background: #eaf8cd; }
+.searchDetail .spec .faculty.md-color04 li { background: #d6f5ff; }
+.searchDetail .spec .faculty.md-color05 li { background: #e8e4fd; }
+
+
+/*============================================================
+  searchManual
+============================================================*/
+.searchManual th,
+.searchManual td {
+	padding: 8px 15px;
+}
+.searchManual th {
+	text-align: center;
+}
+.searchManual .md-pdfBtn {
+	margin-top: 15px;
+	text-align: center;
+}
+.searchManual .md-pdfBtn .btn {
+	width: 65px;
+	padding: 0;
+	height: 28px;
+	line-height: 28px;
+	font-size: 86.66%;
+}
+.searchManual .annotation {
+	padding-left: 2em;
+	text-indent: -2em;
+}
+.searchManual .annotation span {
+	color: #cb2b00;
+}
+
+/*============================================================
+  work
+============================================================*/
+.works {
+
+}
+.works > :first-child {
+	margin-top: 0;
+}
+.works_panel {
+	border: 1px solid #ccc;
+	margin: 20px 0 0;
+}
+.works_title {
+	background: #5f5f5f;
+	color: #eee;
+	font-size: 109%;
+	padding: 10px 15px;
+}
+.works_body {
+	border-top: 1px solid #ccc;
+	padding: 0 10px;
+}
+.works_btn {
+	margin: 0;
+}
+.works_btn .btn {
+	width: 112px;
+	height: 30px;
+	line-height: 30px;
+	padding: 0 8px;
+	font-size: 14px;
+	background-repeat: no-repeat;
+	background-position: 108px 11px;
+	text-align: left;
+}
+.works_btn-up .btn {
+	background-image: url(../../img/default/icon/arrow04_up.png);
+}
+.works_btn-down .btn {
+	background-image: url(../../img/default/icon/arrow04_down.png);
+}
+.works_list {
+	margin: 0;
+}
+.works_list > :first-child {
+	border-top: none;
+}
+.works_item {
+	border-top: 1px solid #ccc;
+	padding: 5px;
+}
+
+.works_item-downBtn .btn,
+.works_item-upBtn .btn {
+	width: 112px;
+	height: 30px;
+	line-height: 30px;
+	padding: 0 8px;
+	font-size: 14px;
+	background-repeat: no-repeat;
+	background-position: 108px 11px;
+	text-align: left;
+}
+.works_item-upBtn .btn {
+	background-image: url(../../img/default/icon/arrow04_up.png);
+}
+.works_item-downBtn .btn {
+	background-image: url(../../img/default/icon/arrow04_down.png);
+}
+
+.works_item-txt a {
+	color: #1152b2;
+	display: inline-block;
+	padding-left: 14px;
+	text-indent: -14px;
+}
+.works_item-txt a:before {
+	content: '';
+	width: 7px;
+	height: 8px;
+	display: inline-block;
+	vertical-align: middle;
+	margin: 0 7px 0 0;
+	background: url(../../img/default/icon/arrow05.png) 0 0 no-repeat;
+	position: relative;
+}
+.works_item-txt a[href*=".pdf"]:after {
+	content: url('../../img/default/icon/icon_pdf2.png');
+	margin: 0 0 0 5px;
+	vertical-align: -3px;
+}
+
+.works_ajaxList {
+	margin: 0 0 0 1.8em;
+}
+.works_ajaxList >:first-child {
+	border-top: none;
+}

@@ -1919,7 +1919,81 @@ class ComEtCrawler:
             self.log_and_update(f"  Full page text (first 1000 chars): {page_text[:1000]}")
             self.log_and_update(f"  Full page text length: {len(page_text)} characters")
             
-            # Try to find component tables or lists
+            # Method 1: Look for the specific setPartsBox_content structure (NEW)
+            try:
+                # Look for the setPartsBox_content container
+                set_parts_containers = driver.find_elements(By.CSS_SELECTOR, ".setPartsBox_content")
+                self.log_and_update(f"  Found {len(set_parts_containers)} setPartsBox_content containers.")
+                
+                for container_idx, container in enumerate(set_parts_containers):
+                    # Look for partsSet divs within this container
+                    parts_sets = container.find_elements(By.CSS_SELECTOR, ".partsSet")
+                    self.log_and_update(f"    Container {container_idx + 1}: Found {len(parts_sets)} partsSet elements.")
+                    
+                    for parts_set_idx, parts_set in enumerate(parts_sets):
+                        try:
+                            # Look for the info div within this partsSet
+                            info_divs = parts_set.find_elements(By.CSS_SELECTOR, ".info")
+                            self.log_and_update(f"      PartsSet {parts_set_idx + 1}: Found {len(info_divs)} info divs.")
+                            
+                            for info_div in info_divs:
+                                # Look for dl elements within the info div
+                                dl_elements = info_div.find_elements(By.TAG_NAME, "dl")
+                                self.log_and_update(f"        Info div: Found {len(dl_elements)} dl elements.")
+                                
+                                component_id = None
+                                component_name = None
+                                
+                                # Process the first 2 dl elements (構成品番 and 商品名)
+                                for dl_idx, dl in enumerate(dl_elements[:2]):
+                                    try:
+                                        dt_elements = dl.find_elements(By.TAG_NAME, "dt")
+                                        dd_elements = dl.find_elements(By.TAG_NAME, "dd")
+                                        
+                                        if dt_elements and dd_elements:
+                                            dt_text = dt_elements[0].text.strip()
+                                            dd_text = dd_elements[0].text.strip()
+                                            
+                                            self.log_and_update(f"          DL {dl_idx + 1}: {dt_text} = {dd_text}")
+                                            
+                                            if "構成品番" in dt_text:
+                                                # Extract text content, ignoring links
+                                                component_id = dd_text.replace("：", "").strip()
+                                                # Remove any HTML tags that might be in the text
+                                                if "<" in component_id:
+                                                    import re
+                                                    component_id = re.sub(r'<[^>]+>', '', component_id)
+                                                self.log_and_update(f"            Extracted component ID: {component_id}")
+                                                
+                                            elif "商品名" in dt_text:
+                                                component_name = dd_text.replace("：", "").strip()
+                                                self.log_and_update(f"            Extracted component name: {component_name}")
+                                                
+                                    except Exception as e:
+                                        self.log_and_update(f"          Error processing DL {dl_idx + 1}: {str(e)}")
+                                        continue
+                                
+                                # If we found both component ID and name, add to components list
+                                if component_id and component_name:
+                                    # Check if this component is already in the list
+                                    existing_component = next((comp for comp in components if comp['component_id'] == component_id), None)
+                                    if not existing_component:
+                                        components.append({
+                                            'component_id': component_id,
+                                            'component_name': component_name
+                                        })
+                                        self.log_and_update(f"        Added component: {component_id} - {component_name}")
+                                    else:
+                                        self.log_and_update(f"        Component {component_id} already exists, skipping")
+                                        
+                        except Exception as e:
+                            self.log_and_update(f"      Error processing partsSet {parts_set_idx + 1}: {str(e)}")
+                            continue
+                            
+            except Exception as e:
+                self.log_and_update(f"  Error finding setPartsBox_content structure: {str(e)}")
+            
+            # Method 2: Fallback to table-based extraction
             try:
                 # Look for tables containing component information
                 tables = driver.find_elements(By.TAG_NAME, "table")
@@ -1931,9 +2005,6 @@ class ComEtCrawler:
                         self.log_and_update(f"    Table {table_idx + 1}: Found {len(rows)} rows")
                         
                         # Process all rows to find component information
-                        current_component_id = None
-                        current_component_name = None
-                        
                         for row_idx, row in enumerate(rows):
                             cells = row.find_elements(By.TAG_NAME, "td")
                             if len(cells) >= 1:
@@ -1941,42 +2012,48 @@ class ComEtCrawler:
                                 cell_text = [cell.text.strip() for cell in cells]
                                 self.log_and_update(f"      Row {row_idx + 1}: {cell_text}")
                                 
-                                # Check if this row contains component ID information
+                                # Check if this row contains component information
+                                component_id = None
+                                component_name = None
+                                
+                                # Look for component ID in this row
                                 for i, text in enumerate(cell_text):
                                     if "構成品番" in text or "品番" in text:
                                         self.log_and_update(f"      Found component ID row: {cell_text}")
                                         # Extract component ID
                                         if i + 1 < len(cell_text):
-                                            current_component_id = cell_text[i + 1]
+                                            component_id = cell_text[i + 1]
                                         else:
                                             # Component ID might be in the same cell after the label
-                                            current_component_id = text.split("：")[-1].strip() if "：" in text else text.split(":")[-1].strip()
-                                        self.log_and_update(f"        Extracted component ID: {current_component_id}")
+                                            component_id = text.split("：")[-1].strip() if "：" in text else text.split(":")[-1].strip()
+                                        self.log_and_update(f"        Extracted component ID: {component_id}")
                                         break
                                 
-                                # Check if this row contains component name information
+                                # Look for component name in this row
                                 for i, text in enumerate(cell_text):
                                     if "商品名" in text or "名称" in text:
                                         self.log_and_update(f"      Found component name row: {cell_text}")
                                         # Extract component name
                                         if i + 1 < len(cell_text):
-                                            current_component_name = cell_text[i + 1]
+                                            component_name = cell_text[i + 1]
                                         else:
                                             # Component name might be in the same cell after the label
-                                            current_component_name = text.split("：")[-1].strip() if "：" in text else text.split(":")[-1].strip()
-                                        self.log_and_update(f"        Extracted component name: {current_component_name}")
+                                            component_name = text.split("：")[-1].strip() if "：" in text else text.split(":")[-1].strip()
+                                        self.log_and_update(f"        Extracted component name: {component_name}")
                                         break
                                 
-                                # If we have both component ID and name, add to components list
-                                if current_component_id and current_component_name:
-                                    components.append({
-                                        'component_id': current_component_id,
-                                        'component_name': current_component_name
-                                    })
-                                    self.log_and_update(f"    Added component: {current_component_id} - {current_component_name}")
-                                    # Reset for next component
-                                    current_component_id = None
-                                    current_component_name = None
+                                # If we found both component ID and name in this row, add to components list
+                                if component_id and component_name:
+                                    # Check if this component is already in the list
+                                    existing_component = next((comp for comp in components if comp['component_id'] == component_id), None)
+                                    if not existing_component:
+                                        components.append({
+                                            'component_id': component_id,
+                                            'component_name': component_name
+                                        })
+                                        self.log_and_update(f"    Added component: {component_id} - {component_name}")
+                                    else:
+                                        self.log_and_update(f"    Component {component_id} already exists, skipping")
                                     
                     except Exception as e:
                         self.log_and_update(f"    Error processing table {table_idx + 1}: {str(e)}")
@@ -2035,7 +2112,30 @@ class ComEtCrawler:
                             self.log_and_update(f"    Error processing component element: {str(e)}")
                             continue
                     
-                    # Method 2: Comprehensive text pattern search using the full page text
+                    # Method 2: Specific regex for setPartsBox_content structure
+                    self.log_and_update("  Trying specific regex for setPartsBox_content structure...")
+                    
+                    # Look for patterns like: 構成品番：ID followed by 商品名：Name within partsSet structure
+                    parts_set_pattern = r'構成品番[：:]\s*([^\s\n]+).*?商品名[：:]\s*([^\n\r]+?)(?=\n|$|構成品番|品番|希望小売価格)'
+                    parts_set_matches = re.findall(parts_set_pattern, page_text, re.DOTALL)
+                    self.log_and_update(f"  Found {len(parts_set_matches)} partsSet matches: {parts_set_matches}")
+                    
+                    for comp_id, comp_name in parts_set_matches:
+                        comp_id = comp_id.strip()
+                        comp_name = comp_name.strip()
+                        if comp_id and comp_name:
+                            # Check if this component is already in the list
+                            existing_component = next((comp for comp in components if comp['component_id'] == comp_id), None)
+                            if not existing_component:
+                                components.append({
+                                    'component_id': comp_id,
+                                    'component_name': comp_name
+                                })
+                                self.log_and_update(f"    Added component from partsSet regex: {comp_id} - {comp_name}")
+                            else:
+                                self.log_and_update(f"    Component {comp_id} already exists, skipping")
+                    
+                    # Method 3: Comprehensive text pattern search using the full page text
                     self.log_and_update("  Trying comprehensive text pattern search...")
                     # Use the page_text we already extracted for debugging
                     self.log_and_update(f"  Using page text length: {len(page_text)} characters")
@@ -2045,7 +2145,7 @@ class ComEtCrawler:
                     component_id_patterns = re.findall(r'\b(TCA\d+[A-Z0-9#]*|TCF\d+[A-Z0-9#]*)\b', page_text)
                     self.log_and_update(f"  Found potential component IDs: {component_id_patterns}")
                     
-                    # Method 2a: Try to find all component blocks using a more comprehensive pattern
+                    # Method 3a: Try to find all component blocks using a more comprehensive pattern
                     self.log_and_update("  Trying comprehensive component block extraction...")
                     # Look for patterns like: 構成品番：ID followed by 商品名：Name
                     component_blocks = re.findall(r'構成品番[：:]\s*([^\s\n]+).*?商品名[：:]\s*([^\n\r]+?)(?=\n|$|構成品番|品番)', page_text, re.DOTALL)
@@ -2054,13 +2154,18 @@ class ComEtCrawler:
                     for comp_id, comp_name in component_blocks:
                         comp_name = comp_name.strip()
                         if comp_id and comp_name:
-                            components.append({
-                                'component_id': comp_id,
-                                'component_name': comp_name
-                            })
-                            self.log_and_update(f"    Added component from block: {comp_id} - {comp_name}")
+                            # Check if this component is already in the list
+                            existing_component = next((comp for comp in components if comp['component_id'] == comp_id), None)
+                            if not existing_component:
+                                components.append({
+                                    'component_id': comp_id,
+                                    'component_name': comp_name
+                                })
+                                self.log_and_update(f"    Added component from block: {comp_id} - {comp_name}")
+                            else:
+                                self.log_and_update(f"    Component {comp_id} already exists, skipping")
                     
-                    # Method 2b: For each potential component ID, try to find associated product name
+                    # Method 3b: For each potential component ID, try to find associated product name
                     for comp_id in component_id_patterns:
                         # Look for structured patterns around this component ID
                         # Pattern: 構成品番：ID followed by 商品名：Name
@@ -2069,11 +2174,16 @@ class ComEtCrawler:
                         
                         if structured_match:
                             component_name = structured_match.group(1).strip()
-                            components.append({
-                                'component_id': comp_id,
-                                'component_name': component_name
-                            })
-                            self.log_and_update(f"    Found component via structured pattern: {comp_id} - {component_name}")
+                            # Check if this component is already in the list
+                            existing_component = next((comp for comp in components if comp['component_id'] == comp_id), None)
+                            if not existing_component:
+                                components.append({
+                                    'component_id': comp_id,
+                                    'component_name': component_name
+                                })
+                                self.log_and_update(f"    Found component via structured pattern: {comp_id} - {component_name}")
+                            else:
+                                self.log_and_update(f"    Component {comp_id} already exists, skipping")
                         else:
                             # Fallback: Look for text around this component ID
                             pattern = rf'.{{0,200}}{re.escape(comp_id)}.{{0,200}}'
@@ -2165,6 +2275,15 @@ class ComEtCrawler:
                 self.log_and_update(f"    Added component: {comp_id} - {comp_name}")
             
             self.log_and_update(f"  Component extraction completed. Found {len(components)} total, {len(filtered_components)} unique components after filtering.")
+            
+            # Log all found components for debugging
+            if filtered_components:
+                self.log_and_update("  Final component list:")
+                for i, comp in enumerate(filtered_components):
+                    self.log_and_update(f"    {i+1}. {comp['component_id']} - {comp['component_name']}")
+            else:
+                self.log_and_update("  No components found after filtering.")
+                
             return filtered_components if filtered_components else None
             
         except Exception as e:

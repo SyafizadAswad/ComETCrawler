@@ -1,0 +1,201 @@
+@charset "utf-8";
+/**********************************************
+TOTO コメット
+インポート・初期化・再定義用CSS
+***********************************************/
+/* インポート
+-------------------------------------------------------------*/
+/*-------------------------------------------------------------*/
+
+/* 初期化
+ * Eric Meyer's Reset CSS v2.0 - http://cssreset.com
+-------------------------------------------------------------*/
+html,body,div,span,applet,object,iframe,h1,h2,h3,h4,h5,h6,p,blockquote,pre,a,abbr,acronym,address,big,cite,code,del,dfn,em,img,ins,kbd,q,s,samp,small,strike,strong,sub,sup,tt,var,b,u,i,center,dl,dt,dd,ol,ul,li,fieldset,form,label,legend,table,caption,tbody,tfoot,thead,tr,th,td,article,aside,canvas,details,embed,figure,figcaption,footer,header,hgroup,menu,nav,output,ruby,section,summary,time,mark,audio,video{border:0;font-size:100%;font-weight: inherit; font-style: inherit; font-family: inherit;vertical-align:baseline;margin:0;padding:0}article,aside,details,figcaption,figure,footer,header,hgroup,menu,nav,section{display:block}body{line-height:1}ul{list-style:none}blockquote,q{quotes:none}blockquote:before,blockquote:after,q:before,q:after{content:none}table{border-collapse:collapse;border-spacing:0}
+iframe {
+	border: 0;
+}
+/* 再定義
+-------------------------------------------------------------*/
+body {
+	font-family: 'ヒラギノ角ゴ Pro W3' , 'Hiragino Kaku Gothic Pro','メイリオ',Meiryo,'ＭＳ Ｐゴシック','ヒラギノ丸ゴ Pro W4','Hiragino Maru Gothic Pro',Verdana,Arial,sans-serif,Osaka;
+	font-size:93.75%;
+	line-height:1.6;
+	color:#222;
+	text-align: left;
+	background: #eee;
+	-webkit-text-size-adjust: 100%;
+}
+img {
+	vertical-align:bottom;
+}
+p,ul,ol,table,dl {
+	margin-bottom:20px;
+}
+td, th {
+	-ms-word-break: break-all;
+	word-break: break-all;
+}
+a {
+	text-decoration: none;
+	color: #222;
+}
+a:hover {
+	text-decoration: underline;
+}
+.headLine2 {
+	font-family:"ヒラギノ明朝 ProN W6","HiraMinProN-W6","HG明朝E","ＭＳ Ｐ明朝","MS PMincho","MS 明朝", "ヒラギノ明朝 Pro W3", "Hiragino Mincho Pro",serif;
+	font-size: 173.33%;
+	margin: 0 0 15px;
+	line-height: 1;
+}
+.headLine3 {
+	background: #0e3d7f;
+	padding: 5px 10px;
+	color: #fff;
+	font-weight: bold;
+	font-size: 120%;
+	margin: 0 0 30px;
+}
+.headLine3.md-black {
+	background: #000;
+}
+.headLine3.md-plane {
+	background: none;
+	padding: 0;
+	margin: 0 0 20px;
+	font-size: 146.66%;
+	color: #000;
+}
+
+.headLine4 {
+	font-size: 120%;
+	font-weight: bold;
+	border-bottom: 2px solid #0e3d7f;
+	padding: 0 0 10px;
+	margin: 0 0 25px;
+}
+.headLine4.md-black {
+	border-bottom: 2px solid #000;
+}
+.headLine4.md-leftBar {
+	border-left: 4px solid #000;
+	border-bottom: none;
+	line-height: 1;
+	padding: 0 0 0 10px;
+	margin: 0 0 20px;
+}
+.headLine4.md-plane {
+	border-bottom: none;
+	padding: 0;
+	margin: 0 0 20px;
+}
+.headLine5 {
+	font-weight: bold;
+	margin: 0 0 15px;
+}
+.headLine6 {}
+b {
+	font-weight: bold;
+}
+strong {
+	font-weight: bold;
+}
+
+
+input {
+	border: none;
+	margin: 0;
+	padding: 0;
+	vertical-align: bottom;
+}
+ input[type="text"],
+ input[type="password"] {
+	border: 1px solid #ccc;
+	height: 18px;
+	padding: 8px 12px;
+}
+input[type="checkbox"],
+input[type="radio"] {
+	vertical-align: middle;
+	margin: 3px;
+}
+section {
+	margin:  40px 0;
+}
+
+table {
+	width: 100%;
+}
+table .even {
+	background: #edf5ff;
+}
+td,
+th {
+	border: 1px solid #ccc;
+	padding: 8px 15px;
+	vertical-align: middle;
+	line-height: 1.59;
+}
+th {
+	background: #eee;
+	text-align: left;
+}
+table p,
+table ul,
+table dl {
+	margin: 0;
+}
+ol li {
+	margin-left: 2em;
+}
+
+/* 汎用
+-------------------------------------------------------------*/
+.fLeft {
+	float: left !important;
+}
+.fRight {
+	float: right !important;
+}
+.clear,
+.clb {
+	clear: both !important;
+}
+.noAround {
+	overflow: hidden;
+	*zoom: 1;
+}
+.bold {
+	font-weight: bold !important;
+}
+.tLeft  {
+	text-align: left !important;
+}
+.tCenter {
+	text-align: center !important;
+}
+.vTop {
+	vertical-align: top !important;
+}
+.vMiddle {
+	vertical-align: middle !important;
+}
+.vBottom {
+	vertical-align: bottom !important;
+}
+.tRight {
+	text-align: right !important;
+}
+.clearfix:before,
+.clearfix:after {
+	content: ".";
+	display: block;
+	height: 0;
+	visibility: hidden;
+}
+.clearfix:after {clear: both;}
+.clearfix {zoom: 1;}
+.displayNone { display: none; }
+.color-red {
+	color: #cb2b00;
+}

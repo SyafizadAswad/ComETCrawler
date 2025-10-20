@@ -1,0 +1,166 @@
+/* Core CSS. Do not edit unless your sure */
+.easy-select-box{
+	display:inline-block;
+	position:relative;
+	vertical-align: bottom;
+}
+.easy-select-box .esb-dropdown{
+	position:absolute;
+	top:100%;
+	left:0;
+	z-index:99;
+	display:none;
+}
+
+/* Default Presentation CSS. You can edit appearance here or create a custom class below */
+.easy-select-box{
+	width:118px;
+	text-align:left;
+	font-size:11px;
+	color:#0c2245;
+}
+.easy-select-box .esb-displayer{
+	background: url(../../img/default/easyselectbox/bg-select-1.png) no-repeat 0 0;
+	color:#0c2245;
+	padding:0 3px;
+	height:18px;
+	line-height:18px;
+	cursor: default;
+}
+.easy-select-box:hover .esb-displayer{
+	background-position: 0 -18px;
+	text-decoration:none;
+}
+.easy-select-box.disabled .esb-displayer,
+.easy-select-box:hover.disabled .esb-displayer{
+	background-position: 0 -36px;
+}
+.easy-select-box .esb-dropdown{
+	border:1px solid #cccccc;
+	width:116px;
+	max-height:200px;
+	overflow:auto;
+	background:#FFFFFF;
+}
+.easy-select-box .esb-dropdown .esb-item{
+	padding:3px;
+	background:#FFFFFF;
+	color:#0c2245;
+	cursor:default;
+}
+.easy-select-box .esb-dropdown .esb-item:hover{
+	background:#3399ff;
+	color:#FFFFFF;
+	text-decoration:none;
+}
+
+
+/* Custom Presentation CSS. You can edit appearance here */
+.easy-select-box-nice{
+	text-align:left;
+	color:#0c2245;
+	min-width:200px;
+}
+.easy-select-box-nice .esb-displayer{
+	background: url(../../img/default/easyselectbox/bg-select-2.png) no-repeat right 0;
+	border-left:1px solid #cccccc;
+	border-right:1px solid #cccccc;
+	padding:0 5px;
+	height:37px;
+	line-height:37px;
+	cursor: default;
+	border-radius:10px;
+}
+.easy-select-box-nice:hover .esb-displayer{
+	background-position: right -37px;
+}
+.easy-select-box-nice.disabled .esb-displayer,
+.easy-select-box-nice:hover.disabled .esb-displayer{
+	background-position: right -74px;
+	color:#ccc;
+}
+.easy-select-box-nice .esb-dropdown{
+	border:1px solid #cccccc;
+	background:#FFFFFF;
+}
+.easy-select-box-nice .esb-dropdown .esb-item{
+	padding:3px 5px;
+	cursor:default;
+}
+.easy-select-box-nice .esb-dropdown .esb-item:hover{
+	background:#3399ff;
+	color:#FFFFFF;
+}
+
+/*============================================================
+  cunstom
+============================================================*/
+
+/*  select01
+----------------------------------------------------------------------*/
+.select01 .easy-select-box .esb-displayer {
+	background: #1152B2 url(../../img/default/btn/select_arrow.png) center right no-repeat;
+	color: #fff;
+	padding: 0 40px 0 10px;
+	font-size: 132%;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.select01 .easy-select-box .esb-displayer.onHover {
+	background-color: #5986c9;
+}
+.select01 .easy-select-box .esb-dropdown {
+	font-size: 132%;
+	border: none;
+}
+.select01 .easy-select-box .esb-dropdown .esb-item {
+	color: #fff;
+	background: #1152B2;
+	padding: 3px 10px;
+}
+.select01 .easy-select-box .esb-dropdown .esb-item.onHover {
+	background-color: #5986c9;
+}
+
+/*  select02
+----------------------------------------------------------------------*/
+.select02 {
+	height: 33px;
+	background: #FFF;
+	border: 1px solid #CCC;
+	display:inline-block;
+	*display:inline;
+	*zoom:1;
+	vertical-align: bottom;
+}
+.select02.error {
+	border: 2px solid #cb2b00;
+}
+.select02 .easy-select-box .esb-displayer {
+	color: #222;
+	padding: 0 35px 0 15px;
+	height: 33px;
+	line-height: 33px;
+	background: url(../../img/default/btn/select_arrow02.png) center right no-repeat;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: 132%;
+}
+.select02 .easy-select-box .esb-displayer.onHover {
+
+}
+.select02 .easy-select-box .esb-dropdown {
+	font-size: 132%;
+	border: 1px solid #CCC;
+	border-top: none;
+}
+.select02 .easy-select-box .esb-dropdown .esb-item {
+	color: #222;
+	background: #fff;
+	padding: 3px 10px;
+}
+.select02 .easy-select-box .esb-dropdown .esb-item.onHover {
+	background-color: #eee;
+}

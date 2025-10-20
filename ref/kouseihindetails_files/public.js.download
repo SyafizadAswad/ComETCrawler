@@ -1,0 +1,252 @@
+/* vim: set tabstop=2 shiftwidth=2 foldmethod=marker: */
+/**
+ * @author      Shogo Kawase <shogo@arcstyle.jp>
+ * @author      Yusuke Naito <yuk@arcstyle.jp>
+ * @copyright   Arc Style Inc.
+ * @version     SVN: $Id$
+ */
+/** コンテナ **/
+vw.public = {
+	url: null,
+	cadCategory: null,
+	cadCategoryPath: null
+};
+
+/** 初期化 **/
+vw.public.init = function(j, k)
+{
+	this.url = j;
+	this.recommendUrl = k;
+};
+
+/** 郵便番号検索 **/
+vw.public.postal = function(key, url)
+{
+	var btn = $('<a href="javascript: void(0);" class="btn"><span class="arrow">郵便番号から住所を自動入力</span></a>')
+		.click(function(){
+			var zip = [
+				$(key + '-zip-0').val(),
+				$(key + '-zip-1').val()
+			];
+			if (isNaN(zip[0]) || isNaN(zip[1]) || zip[0].length < 3 || zip[1].length < 4) {
+				alert('郵便番号は7桁全て正確に入力してください');
+			} else {
+				$.getJSON(url + '/postal/zipcode=' + zip.join('-') + '/_=' + (new Date).getTime(), function(json){
+					if (!json.count) {
+						alert('該当する住所が見つかりませんでした。');
+					} else {
+						var x = [key + '-pref-container', key + '-city-container', key + '-addr-container'].join(',');
+						$j171(key + '-pref').easySelectBox('select', json.pref_code, true);
+						$(key + '-pref').val(json.pref_code);
+						$(key + '-city').val(json.city_name);
+						$(key + '-addr').val(json.town_name);
+						$(x).effect('highlight', {color:'#FFD'}, 1500);
+						vw.form.cursorMoveToEnd($(key + '-addr')[0]);
+					}
+				});
+			}
+			return false;
+		})
+	;
+	$(btn).appendTo(key + '-zip-container');
+};
+/** キーワード検索のデフォルト値処理 **/
+vw.public.rmCaptionFromKeyword = function()
+{
+	$('#text_keyword:not(.removed)').addClass('removed').val('');
+};
+vw.public.setCaptionToKeyword = function()
+{
+	var kw = $('#text_keyword');
+	if (kw.val() == '') {
+		kw.removeClass('removed').val('商品名・キーワードを入力してください');
+	}
+};
+
+/** CADダウンロード **/
+vw.public.cadDownload = function (elem, params) {
+	elem = $(elem);
+	var url = vw.public.url + '/cad_cart_download/createZip/';
+	$.getJSON(url, params, function (json) {
+		if (json.error) {
+			elem.before('<p>'+json.error+'</p>');
+			elem.remove();
+		} else if (json.fileName.length) {
+			$('#image-loading').hide();
+			elem
+					.removeClass('md-color02')
+					.attr('href', vw.public.url + '/cad_cart_download/downloadZip/' + json.fileName)
+					.children().text('ダウンロード').addClass('arrow')
+			;
+		}
+	});
+};
+
+vw.public.setCadCategory = function(json, categoryJson) {
+	vw.public.cadCategory = json;
+	vw.public.cadCategoryPath = categoryJson;
+};
+
+vw.public.switchCadDownloadable = function() {
+	var checkedDownloadFormatLength = $(':checkbox.checkbox-cad-format:checked').length,
+			downloadWithCsv = $(':radio[name=withCsv]:checked').val(),
+			downloadMaterial = $(':radio[name=materialType]:checked').val();
+	if (!checkedDownloadFormatLength) {
+		$('#btn-download-default, #btn-download-with-config').unbind().click(function(){ return false; }).addClass('md-color02');
+	} else {
+		$('#btn-download-default').unbind().click(function(){ return vw.public.cadDownloadSubmit(true); }).removeClass('md-color02');
+		if (downloadWithCsv == 2 && downloadMaterial == 3) {
+			$('#btn-download-with-config').unbind().click(function(){ return false; }).addClass('md-color02');
+		} else {
+			$('#btn-download-with-config').unbind().click(function(){ return vw.public.cadDownloadSubmit(false); }).removeClass('md-color02');
+		}
+	}
+};
+
+vw.public.cadDownloadSubmit = function(isBasic) {
+	var url = vw.public.url + '/cad_cart_download/submit/',
+	    temporaryForm = $('<form action="' + url + '" method="post"></form>').hide().appendTo('body');
+	temporaryForm.submit(function(){
+		if (isBasic) {
+			$('<input type="hidden" name="withCsv" value="1">').appendTo(temporaryForm);
+			$('<input type="hidden" name="materialType" value="1">').appendTo(temporaryForm);
+		} else {
+			$('#download-config input').clone().appendTo(temporaryForm);
+		}
+		$('#cart-available-format input').clone().appendTo(temporaryForm);
+		vw.public.popupCadDownloadWindow(temporaryForm);
+	}).submit().remove();
+};
+
+vw.public.popupCadDownloadWindow = function(form) {
+	var url = vw.public.url + '/cad_cart_download/?' + $(form).serialize();
+	window.open(url, 'cad_download', 'width=860px, height=500px');
+};
+
+vw.public.catalogRecommend = function(elem, values, subject) {
+	if ($.totoRecommend !== undefined) {
+		$.totoRecommend.loadRecommendData({
+			"url" : vw.public.recommendUrl,
+			"headerName" : subject,//リコメンドのタイトルに表示する名称を指定
+			"target" : $(elem),//出力するエリアを指定
+			"recommendButtonHideFlag" : $.totoPromotionRecommend !== undefined,
+			"params" : {
+				"format" : "json",//not required
+				"categories" : values
+			}
+		});
+	}
+};
+vw.public.catalogRecommendPromotion = function(elem, values, subject, deferred, onFound) {
+	if ($.totoPromotionRecommend !== undefined) {
+		$.totoPromotionRecommend.loadPromotionRecommendData({
+			"url" : vw.public.recommendUrl,
+			"headerName" : subject,//リコメンドのタイトルに表示する名称を指定
+			"target": $(elem).find('.promotion_contents'),
+			"params" : {
+				"format" : "json",//not required
+				"categories" : values
+			},
+			"callback": function(found) {
+				if (found) {
+					$(elem).show().closest(".promotion_cate").addClass('promotion_enabled');
+					if (onFound != undefined) {
+						onFound($(elem));
+					}
+				} else {
+					$(elem).closest(".promotion_cate").hide().removeClass("promotion_enabled");
+				}
+				deferred.resolve();
+			}
+		});
+	}
+};
+
+/** jquery.ready **/
+$(function(){
+	/*** キーワード検索 ***/
+	$('#form-search').submit(function() { vw.public.rmCaptionFromKeyword(); });
+	$('#text_keyword')
+		.click(function(){ vw.public.rmCaptionFromKeyword(); })
+		.blur(function(){ vw.public.setCaptionToKeyword(); })
+	;
+	vw.public.setCaptionToKeyword();
+
+	/*** サイドバーカテゴリ ***/
+	$("#global-nav").find("li").hover(function(){
+		var t = $(this).addClass('active');
+		clearTimeout(this._tim2);
+		this._tim1 = setTimeout(function(){ t.find('ul:first').fadeIn(); }, 150);
+	},function(){
+		var t = $(this).removeClass('active');
+		clearTimeout(this._tim1);
+		this._tim2 = setTimeout(function(){ t.find('ul').hide(); }, 300);
+	});
+
+	var addCadToCart = function(id) {
+		$.getJSON(vw.public.url + '/cad_cart/addj/', {id:id}, function(json){
+			$('.cad-cart-current-count').text(vw.util.numberFormat(json.count));
+			$.each(json.added, function(k, id){
+				$('#li-btn-cart-add-'+id).hide();
+				$('#li-btn-cart-in-'+id).show();
+			});
+			if (json.msg) {
+				alert(json.msg);
+			}
+		});
+	};
+	$('a.btn-cart-add').click(function(){
+		var id = this.id.split('-')[1];
+		addCadToCart(id);
+		return false;
+	});
+	$('a.btn-cart-add-all').click(function(){
+		var list = [];
+		$("a.btn-cart-add").each(function(){
+			list.push(this.id.split('-')[1]);
+		});
+		addCadToCart(list.join(','));
+		return false;
+	});
+	$('a.btn-cart-remove').click(function(){
+		var id = this.id.split('-')[2],
+		    url;
+		$.getJSON(vw.public.url + '/cad_cart/removej/', {id:id}, function(){
+			$('#tr-cart-item-'+id).remove();
+			$('tbody.addOddEven tr').removeClass('even');
+			$('tbody.addOddEven').each(function(){
+				$(this).children(':odd').addClass('even');
+			})
+			if (!$('table.basketTable > tbody > tr').length) {
+				if (location.href.match(/\/p=0\/?/) || !location.href.match(/\/p=/)) {
+					location.reload();
+				} else {
+					alert('ページ内の全ての商品を削除しました。1ページ目に戻ります。');
+					location.href = location.href.replace(/\/p=[0-9]+\/?/, '');
+				}
+			}
+		});
+		return false;
+	});
+	$(':checkbox.checkbox-cad-format').click(function(){
+		var params = {};
+		params[this.name] = this.checked ? 1 : 0;
+		vw.public.switchCadDownloadable();
+		$.getJSON(vw.public.url + '/cad_cart/setFormat', params);
+	});
+	$(':radio[name=withCsv], :radio[name=materialType]').click(function(){
+		vw.public.switchCadDownloadable();
+	});
+	vw.public.switchCadDownloadable();
+
+	// 検索系のフォームの submit 時に ? を削除する
+	$('form.searchForm').submit(function(){
+		var self = this;
+		$(['searchStr', 'keyword', 'itemName', 'itemNumber']).each(function(){
+			var keyword = $(self).find('input[name='+this+']').val();
+			if (keyword) {
+				$(self).find('input[name='+this+']').val(keyword.replace(/\?|？/g, ''));
+			}
+		});
+	});
+});

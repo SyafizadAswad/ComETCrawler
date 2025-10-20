@@ -1,0 +1,173 @@
+@charset "utf-8";
+/**********************************************
+TOTO コメット
+フォーム関連用CSS
+***********************************************/
+/*  formBtn
+----------------------------------------------------------------------*/
+.formBtn {
+	margin: 30px auto 60px;
+}
+
+.formBtn .btnNo {
+	width: 180px;
+}
+.errors {
+	color: #cb2b00;
+}
+p.error {
+	color: #cb2b00;
+	margin-bottom: 0;
+	line-height: 24px;
+}
+
+
+/*  formTable
+----------------------------------------------------------------------*/
+.formTable {
+	border-top: 1px solid #ccc;
+	margin: 0 0 30px;
+}
+.formTable tr {
+	border-bottom: 1px solid #ccc;
+}
+.formTable th,
+.formTable td {
+	border: none;
+	line-height: 34px;
+	padding: 20px 20px 15px;
+	text-align: left;
+	border-left: 1px solid #ccc;
+}
+.formTable.confirm th,
+.formTable.confirm td {
+	line-height: 1.2;
+}
+.formTable thead th {
+	border-left: 1px solid #ccc;
+	background: #e3e3e3;
+	text-align: center;
+	padding: 10px 20px;
+	line-height: 1;
+}
+.formTable tr>:first-child {
+	border-left: none;
+}
+
+
+
+.formTable th {
+	width: 200px;
+	padding-left: 0;
+	vertical-align: top;
+}
+.formTable.mailMagazineTable th {
+	width: 420px;
+	/* position: relative; */
+}
+.formTable td {
+	vertical-align: middle;
+}
+.formTable th span {
+	margin-right: 5px;
+}
+.formTable .must:after {
+	content: '必須';
+	font-size: 1px;
+	text-indent: -9999px;
+	background: url(../../img/default/icon/label_must.gif) 0 0 no-repeat;
+	width: 45px;
+	height: 15px;
+	display:inline-block;
+	*display:inline;
+	*zoom:1;
+	vertical-align: middle;
+}
+.formTable .must.mailAddress:after {
+	position: relative;
+	top: -35px;
+}
+.formTable .mailMagazineMust:after {
+	content: 'メルマガ希望の方 必須';
+	font-size: 1px;
+	display:inline-block;
+	*display:inline;
+	*zoom:1;
+	vertical-align: middle;
+	text-indent: -9999px;
+	background: url(../../img/default/icon/label_mailmagazine_must.gif) 0 0 no-repeat;
+	width: 115px;
+	height: 15px;
+}
+.formTable .annotation {
+	font-size: 86.66%;
+	padding-left: 1em;
+	text-indent: -1em;
+	display: inline-block;
+	line-height: 1.6;
+	margin-top: 4px;
+}
+.formTable .checkList {
+	margin: 0 -23px 0 0;
+}
+.formTable .checkList li {
+	display:inline-block;
+	*display:inline;
+	*zoom:1;
+	vertical-align: middle;
+	margin: 0 23px 0 0;
+}
+.formTable .checkList .noMail {
+	border-left: 1px solid #ccc;
+	padding-left: 20px;
+	line-height: 1;
+}
+.formTable input[type="text"],
+.formTable input[type="password"] {
+	border: 1px solid #ccc;
+	height: 18px;
+	padding: 8px 12px;
+}
+.formTable .long {
+	width: 474px;
+}
+.formTable .mid {
+	width: 154px;
+}
+.formTable .min {
+	width: 94px;
+}
+.formTable .select02 .easy-select-box .esb-displayer {
+	width: 260px;
+}
+.formTable input[type="text"].error,
+.formTable input[type="password"].error {
+	border: 2px solid #cb2b00;
+}
+.formTable .zipSearch {
+	font-size: 86.66%;
+	margin-left: 20px;
+}
+.formTable .zipSearch .btn {
+	width: 184px;
+	height: 28px;
+	line-height: 28px;
+	margin: 4px 0;
+	vertical-align: bottom;
+}
+.formTable .errorMessage {
+	display:inline-block;
+	*display:inline;
+	*zoom:1;
+	vertical-align: top;
+	background: url(../../img/default/shared/error_messege_bg.png) 0 0 no-repeat;
+	color: #fff;
+	height: 35px;
+	line-height: 35px;
+	padding: 0 20px 0 28px;
+	margin: 0 0 0 10px;
+}
+
+.sendMessage {
+	font-size: 89%;
+}
