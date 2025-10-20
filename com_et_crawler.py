@@ -603,31 +603,96 @@ class ComEtCrawler:
 
                 # Pagination: click 次へ (class="next") if present
                 try:
+                    self.log_and_update(f"Checking for pagination on page {page_index}...")
                     next_button = None
-                    try:
-                        # Prefer within section.searchInfo
-                        next_button = driver.find_element(By.CSS_SELECTOR, "section.searchInfo ul.pageing a.next")
-                    except Exception:
-                        # Fallback to any pagination next
-                        elems = driver.find_elements(By.CSS_SELECTOR, "ul.pageing a.next")
-                        if elems:
-                            next_button = elems[0]
+                    
+                    # Try multiple approaches to find the next button
+                    pagination_selectors = [
+                        "ul.pageing a.next",
+                        "ul.pageing li a.next", 
+                        "a.next",
+                        ".next",
+                        "//a[@class='next']",
+                        "//a[contains(@class, 'next')]",
+                        "//a[span[@class='arrow' and contains(text(), '次へ')]]",
+                        "//a[contains(text(), '次へ')]"
+                    ]
+                    
+                    for selector in pagination_selectors:
+                        try:
+                            if selector.startswith("//"):
+                                # XPath selector
+                                elems = driver.find_elements(By.XPATH, selector)
+                            else:
+                                # CSS selector
+                                elems = driver.find_elements(By.CSS_SELECTOR, selector)
+                            
+                            if elems:
+                                for elem in elems:
+                                    try:
+                                        text = elem.text.strip()
+                                        href = elem.get_attribute('href')
+                                        classes = elem.get_attribute('class') or ''
+                                        is_displayed = elem.is_displayed()
+                                        is_enabled = elem.is_enabled()
+                                        
+                                        # Check if this looks like a next button
+                                        if ('next' in classes.lower() or '次へ' in text) and href and is_displayed and is_enabled:
+                                            next_button = elem
+                                            self.log_and_update(f"Found next button: text='{text}', href='{href}'")
+                                            break
+                                    except Exception:
+                                        continue
+                                
+                                if next_button:
+                                    break
+                                
+                        except Exception:
+                            continue
 
-                    if next_button and next_button.is_displayed() and next_button.is_enabled():
-                        self.log_and_update("Next page detected. Navigating to the next page (次へ)...")
-                        driver.execute_script("arguments[0].scrollIntoView(true);", next_button)
-                        time.sleep(0.5)
-                        next_button.click()
-                        # wait for page navigation by checking URL or body refresh
-                        WebDriverWait(driver, 15).until(EC.presence_of_element_located((By.CSS_SELECTOR, "body")))
-                        time.sleep(2)
-                        page_index += 1
-                        continue
+                    if next_button:
+                        try:
+                            button_text = next_button.text.strip()
+                            button_href = next_button.get_attribute('href')
+                            
+                            self.log_and_update(f"Next button found: text='{button_text}', href='{button_href}'")
+                            self.log_and_update("Next page detected. Navigating to the next page (次へ)...")
+                            
+                            driver.execute_script("arguments[0].scrollIntoView(true);", next_button)
+                            time.sleep(1)
+                            
+                            # Store current URL to verify navigation
+                            current_url_before = driver.current_url
+                            self.log_and_update(f"Current URL before click: {current_url_before}")
+                            
+                            next_button.click()
+                            
+                            # Wait for navigation to complete
+                            try:
+                                WebDriverWait(driver, 15).until(
+                                    lambda driver: driver.current_url != current_url_before
+                                )
+                                self.log_and_update(f"Navigation successful. New URL: {driver.current_url}")
+                            except TimeoutException:
+                                self.log_and_update("Navigation timeout, but continuing...")
+                            
+                            # Additional wait for page to load
+                            WebDriverWait(driver, 15).until(EC.presence_of_element_located((By.CSS_SELECTOR, "body")))
+                            time.sleep(3)
+                            page_index += 1
+                            self.log_and_update(f"Successfully moved to page {page_index}")
+                            continue
+                        except Exception as e:
+                            self.log_and_update(f"Error clicking next button: {str(e)}")
                     else:
-                        self.log_and_update("No further pages detected. Finishing.")
-                        break
+                        self.log_and_update("No next button found with any selector")
+                    
+                    # If we reach here, no next page was found or clicked
+                    self.log_and_update("No further pages detected. Finishing.")
+                    break
+                    
                 except Exception as e:
-                    self.log_and_update(f"Pagination check/click failed or no more pages: {str(e)}")
+                    self.log_and_update(f"Pagination check/click failed: {str(e)}")
                     break
 
             except Exception as e:
